@@ -1,0 +1,15 @@
+$kind: http-request
+method: POST
+url: http://localhost:3000/requests/
+order: 1000
+headers:
+  Content-Type: application/json
+  x-user-id: EMP-001
+  x-user-role: Employee
+body:
+  type: json
+  content: |-
+    {
+      "departmentId": "DEPT-IT",
+      "description": "Laptop screen flickers"
+    }
