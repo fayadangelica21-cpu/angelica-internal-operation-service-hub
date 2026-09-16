@@ -1,31 +1,300 @@
-# Internal Operations Service Hub — Assignment 4
+# Internal Operations Service Hub
 
-This repository contains the Assignment 4 bounded NestJS backend slice for the Internal Operations Service Hub.
+```text
+Week 1 — Product specification, architecture, data model
+Week 2 — Verified Open → In Progress → Resolved lifecycle
+Week 3 — React + NestJS + SQLite product slice
+```
 
-The implementation focuses on the request lifecycle and strictly enforces the lifecycle defined by the Week 2 specification:
+Employees submit one internal service request (IT, HR, or Finance). The backend owns validation, authorization, persistence, and lifecycle rules.
 
 ```text
 Open → In Progress → Resolved
 ```
 
-## Scope of this implementation
+---
 
-Implemented in this bounded slice:
+## What this slice includes
 
-- Create a request.
-- Start every new request in `Open`.
-- Assign an owner to an `Open` request and move it to `In Progress`.
-- Move an `In Progress` request to `Resolved`.
-- Reject direct lifecycle jumps.
-- Reject reverse transitions and changes from the terminal `Resolved` state.
-- Validate request and status input through DTO validation.
-- Return a clear `404` when a request does not exist.
+- React form for submitting a request
+- NestJS API with an explicit contract
+- SQLite persistence through TypeORM
+- Authorization: an employee can create a request as themselves; another employee cannot read it (`403`)
+- Invalid input rejected on purpose (`400`)
+- Missing request handled on purpose (`404`)
+- Automated business-rule, integration, and E2E tests
+- Regression protection for the forbidden `Open → Resolved` jump
 
-The wider Product Spec, Architecture, Data Model, and ADR describe the target system. Authentication/SSO, full authorization, notifications, status-history persistence, overdue detection, and a physical relational database are outside this bounded Assignment 4 implementation slice.
+Out of scope for Week 3: real SSO, notifications, CI/CD, deployment, and production infrastructure. Identity for local runs uses development headers. The backend still makes every authorization decision.
 
-## Repository structure
+---
+
+## Prerequisites
+
+- Node.js 20+
+- npm
+
+No separate database server is required.
+
+---
+
+## Install and run
+
+### Backend
+
+```bash
+cd backend
+npm install
+npm run start:dev
+```
+
+API: `http://localhost:3000`
+
+SQLite file (created on first start): `backend/data/service-hub.sqlite`
+
+### Frontend
+
+In a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+UI: `http://localhost:5173`
+
+The frontend uses Vite environment variables for local configuration. These are typed in `frontend/src/vite-env.d.ts` and read from `frontend/src/config.ts`.
+
+Optional frontend env (`frontend/.env.example`):
 
 ```text
+VITE_API_URL=http://localhost:3000
+VITE_USER_ID=EMP-001
+VITE_USER_ROLE=Employee
+```
+
+This file is standard Vite setup so TypeScript recognizes `import.meta.env` without errors. The frontend in this Week 3 slice runs as an Employee. Staff/Admin identities are exercised through API/curl tests.
+
+### Stop the project
+
+The backend and frontend run in separate terminals.
+
+Press Ctrl + C in each terminal to stop the corresponding process.
+
+The SQLite database remains on disk at:
+
+backend/data/service-hub.sqlite
+
+---
+
+## Exercise the user-facing flow
+
+1. Open `http://localhost:5173`.
+2. Select IT, HR, or Finance.
+3. Enter a description (for example `Laptop screen flickers`).
+4. Click **Submit request**.
+5. The UI should show the created request with status **Open**.
+
+The frontend sends `POST /requests`. The backend derives `requesterId` from identity headers, not from the JSON body.
+
+---
+
+## API contract
+
+Local identity headers (development adapter, not production auth):
+
+```text
+x-user-id
+x-user-role          Employee | Staff | Admin
+x-user-department-id required for Staff
+```
+
+### Create a request
+
+```http
+POST /requests
+Content-Type: application/json
+x-user-id: EMP-001
+x-user-role: Employee
+
+{
+  "departmentId": "DEPT-IT",
+  "description": "Laptop screen flickers"
+}
+```
+
+Success (`201`):
+
+```json
+{
+  "id": "uuid",
+  "departmentId": "DEPT-IT",
+  "requesterId": "EMP-001",
+  "description": "Laptop screen flickers",
+  "status": "Open",
+  "ownerId": null,
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+`departmentId` must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`. Description is required (whitespace-only is rejected).
+
+### Read a request
+
+```http
+GET /requests/:id
+```
+
+| Result | Meaning |
+|---|---|
+| `200` | Request exists and the caller may access it |
+| `403` | Request exists, but this caller may not access it |
+| `404` | No request with that ID |
+
+### Assign and resolve (Week 2 lifecycle, still enforced)
+
+- `PATCH /requests/:id/assign` with `{ "ownerId": "<staff-id>" }` — Staff in that department take ownership. Status becomes `In Progress`.
+- `PATCH /requests/:id/status` with `{ "targetStatus": "Resolved" }` — Staff resolve an in-progress request. Starting work through this endpoint is rejected; use assign.
+
+---
+
+## Boundary checks (curl)
+
+Backend must be running. Git Bash / macOS / Linux syntax:
+
+**Create (allowed)**
+
+```bash
+curl -X POST http://localhost:3000/requests \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: EMP-001" \
+  -H "x-user-role: Employee" \
+  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers"}'
+```
+
+Expected: `201`, `status=Open`, `requesterId=EMP-001`.
+
+**Invalid payload (rejected on purpose)**
+
+```bash
+curl -X POST http://localhost:3000/requests \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: EMP-001" \
+  -H "x-user-role: Employee" \
+  -d '{"departmentId":"DEPT-IT"}'
+```
+
+Expected: `400 Bad Request`.
+
+**Missing resource (handled on purpose)**
+
+```bash
+curl http://localhost:3000/requests/not-a-real-request \
+  -H "x-user-id: EMP-001" \
+  -H "x-user-role: Employee"
+```
+
+Expected: `404 Not Found`.
+
+**Authorization denied**
+
+Create a request as `EMP-001`, then:
+
+```bash
+curl http://localhost:3000/requests/<REQUEST_ID> \
+  -H "x-user-id: EMP-002" \
+  -H "x-user-role: Employee"
+```
+
+Expected: `403 Forbidden`.
+
+**Lifecycle (Week 2, still valid)**
+
+```bash
+curl -X PATCH http://localhost:3000/requests/<REQ_ID>/assign \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: STAFF-IT-01" \
+  -H "x-user-role: Staff" \
+  -H "x-user-department-id: DEPT-IT" \
+  -d '{"ownerId":"STAFF-IT-01"}'
+```
+
+Expected: `200`, status `In Progress`.
+
+```bash
+curl -X PATCH http://localhost:3000/requests/<REQ_ID>/status \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: STAFF-IT-01" \
+  -H "x-user-role: Staff" \
+  -H "x-user-department-id: DEPT-IT" \
+  -d '{"targetStatus":"Resolved"}'
+```
+
+Expected: `200`, status `Resolved`.
+
+Direct `Open → Resolved` on a new request is still `400`.
+
+On Windows PowerShell, send JSON with `Invoke-RestMethod` or use Git Bash for the `curl` examples above.
+
+---
+
+### Windows note
+
+The examples use Git Bash syntax.
+
+If you are using PowerShell, use `Invoke-RestMethod` instead.
+
+
+## Automated tests
+
+### Backend
+
+```bash
+cd backend
+npm install
+npm run test:all
+```
+
+| Command | What it proves |
+|---|---|
+| `npm run test:unit` | Lifecycle allowed: `Open → In Progress → Resolved`. Regression: `Open → Resolved` rejected. `Resolved` is terminal. |
+| `npm run test:integration` | SQLite persistence plus HTTP `400` / `403` / `404` boundaries |
+| `npm run test:all` | All backend tests |
+
+### E2E
+
+Start the backend on port `3000` first, then:
+
+```bash
+cd frontend
+npm install
+npx playwright install
+npm run test:e2e
+```
+
+The browser test submits a request and verifies that the successful result is displayed with status 'Open'.
+
+---
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| `docs/product-spec.md` | Product problem, actors, requirements |
+| `docs/architecture.md` | System structure and trust boundaries |
+| `docs/data-model.md` | Durable facts and lifecycle rules |
+| `docs/week2-agentic-workflow.md` | Week 2 lifecycle verification |
+| `docs/week3-full-stack-delivery.md` | Week 3 Build → Protect → Automate evidence |
+| `docs/decisions/ADR-001-relational-database.md` | Database choice |
+
+---
+
+## Repository layout
+
+```text
+
 README.md
 
 docs/
@@ -34,11 +303,15 @@ docs/
 ├── data-model.md
 ├── decisions/
 │   └── ADR-001-relational-database.md
-└── week2-agentic-workflow.md
+├── week2-agentic-workflow.md
+└── week3-full-stack-delivery.md
 
 backend/
 ├── package.json
 ├── tsconfig.json
+├── test/
+│   ├── requests.integration-spec.ts
+│   └── requests.persistence-spec.ts
 └── src/
     ├── main.ts
     ├── app.module.ts
@@ -47,113 +320,32 @@ backend/
         ├── requests.controller.ts
         ├── requests.service.ts
         ├── request-state-machine.service.ts
+        ├── current-user.ts
         ├── dto/
         │   ├── create-request.dto.ts
         │   ├── assign-request.dto.ts
         │   └── update-status.dto.ts
         ├── entities/
         │   └── request.entity.ts
-        └── enums/
-            └── request-status.enum.ts
+        ├── enums/
+        │   └── request-status.enum.ts
+        └── request-state-machine.service.spec.ts
+
+frontend/
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── playwright.config.ts
+├── .env.example
+├── e2e/
+│   └── request-submission.spec.ts
+└── src/
+    ├── main.tsx
+    ├── App.tsx
+    ├── api.ts
+    ├── config.ts
+    └── styles.css
+
 ```
 
-## Run
-
-```bash
-cd backend
-npm install
-npm run start:dev
-```
-
-The API runs on:
-
-```text
-http://localhost:3000
-```
-
-## Lifecycle verification
-
-The assignment requires **two valid half-step transitions** and **one invalid full-path transition**.
-
-### 1. Create a request — `Open`
-
-```bash
-curl -X POST http://localhost:3000/requests \
- -H "Content-Type: application/json" \
- -d '{"departmentId":"DEPT-IT","requesterId":"USR-123","description":"Laptop screen flicker"}'
-```
-
-The response should contain a new request whose status is `Open`.
-
-Copy its returned `id` and use it as `<REQ_ID>` below.
-
-### 2. Valid half-step #1: `Open → In Progress`
-
-```bash
-curl -X PATCH http://localhost:3000/requests/<REQ_ID>/assign \
- -H "Content-Type: application/json" \
- -d '{"ownerId":"STAFF-IT-01"}'
-```
-
-Expected: `200 OK`, with `ownerId` set and status changed to `In Progress`.
-
-### 3. Valid half-step #2: `In Progress → Resolved`
-
-```bash
-curl -X PATCH http://localhost:3000/requests/<REQ_ID>/status \
- -H "Content-Type: application/json" \
- -d '{"targetStatus":"Resolved"}'
-```
-
-Expected: `200 OK`, with status changed to `Resolved`.
-
-### 4. Invalid full-path transition: `Open → Resolved`
-
-Create **another** request so that it remains in `Open`, then run:
-
-```bash
-curl -X PATCH http://localhost:3000/requests/<NEW_REQ_ID>/status \
- -H "Content-Type: application/json" \
- -d '{"targetStatus":"Resolved"}'
-```
-
-Expected: `400 Bad Request` because the direct full-path jump from `Open` to `Resolved` is forbidden.
-
-### Required assignment result
-
-| Transition | Result | Type |
-|---|---|---|
-| `Open → In Progress` | Allowed | Valid half-step #1 |
-| `In Progress → Resolved` | Allowed | Valid half-step #2 |
-| `Open → Resolved` | Rejected | Invalid full-path jump |
-
-This is the **three-transition verification required by the assignment**.
-
-## Strict state-machine rule
-
-The lifecycle is enforced in one dedicated service:
-
-```text
-Open
-  │
-  └──→ In Progress
-          │
-          └──→ Resolved
-```
-
-Allowed transitions:
-
-- `Open → In Progress` ✅
-- `In Progress → Resolved` ✅
-
-The direct full-path transition is rejected:
-
-- `Open → Resolved` ❌
-
-The implementation also treats `Resolved` as terminal, so it has no outgoing lifecycle transitions. This is an implementation safeguard and is **not an additional required verification case** for the assignment.
-
-Assignment validates the `Open → In Progress` transition through the same state-machine service before changing the request state.
-
-## Architecture/documentation boundary
-
-The architecture and data model describe the full target Service Hub, including relational storage, authorization, history, notifications, overdue detection, and admin monitoring. Assignment 4 implements only the bounded request lifecycle slice; it does not claim those future/other components are already implemented.
+TypeORM `synchronize` is enabled for this local SQLite slice only.
