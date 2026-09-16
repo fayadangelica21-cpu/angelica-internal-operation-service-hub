@@ -1,0 +1,1 @@
+body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;padding:0 16px}form{display:grid;gap:16px}label{display:grid;gap:6px}textarea,select,button{font:inherit;padding:10px}textarea{min-height:110px}button{cursor:pointer}section{margin-top:24px;padding:16px;border:1px solid #ccc;border-radius:8px}
