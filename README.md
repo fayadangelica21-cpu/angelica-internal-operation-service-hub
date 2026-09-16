@@ -48,7 +48,7 @@ npm install
 npm run start:dev
 ```
 
-API: `http://localhost:3000`
+API: `http://localhost:3001`
 
 SQLite file (created on first start): `backend/data/service-hub.sqlite`
 
@@ -69,7 +69,7 @@ The frontend uses Vite environment variables for local configuration. These are 
 Optional frontend env (`frontend/.env.example`):
 
 ```text
-VITE_API_URL=http://localhost:3000
+VITE_API_URL=http://localhost:3001
 VITE_USER_ID=EMP-001
 VITE_USER_ROLE=Employee
 ```
