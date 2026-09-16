@@ -1,30 +1,32 @@
-import { Controller, Post, Get, Patch, Body, Param } from '@nestjs/common';
-import { RequestsService } from './requests.service';
-import { CreateRequestDto } from './dto/create-request.dto';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import { AssignRequestDto } from './dto/assign-request.dto';
+import { CreateRequestDto } from './dto/create-request.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { RequestsService } from './requests.service';
+import { CurrentUser, CurrentUserData } from './current-user';
 
 @Controller('requests')
 export class RequestsController {
   constructor(private readonly requestsService: RequestsService) {}
 
   @Post()
-  create(@Body() dto: CreateRequestDto) {
-    return this.requestsService.create(dto);
+  @HttpCode(HttpStatus.CREATED)
+  create(@CurrentUser() user: CurrentUserData, @Body() dto: CreateRequestDto) {
+    return this.requestsService.create(user, dto);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.requestsService.findOne(id);
+  findOne(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
+    return this.requestsService.findOne(user, id);
   }
 
   @Patch(':id/assign')
-  assign(@Param('id') id: string, @Body() dto: AssignRequestDto) {
-    return this.requestsService.assign(id, dto);
+  assign(@CurrentUser() user: CurrentUserData, @Param('id') id: string, @Body() dto: AssignRequestDto) {
+    return this.requestsService.assign(user, id, dto);
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
-    return this.requestsService.transitionStatus(id, dto);
+  updateStatus(@CurrentUser() user: CurrentUserData, @Param('id') id: string, @Body() dto: UpdateStatusDto) {
+    return this.requestsService.transitionStatus(user, id, dto);
   }
 }
