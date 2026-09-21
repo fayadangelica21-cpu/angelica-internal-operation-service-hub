@@ -9,7 +9,7 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 ## 2. Actors / Stakeholders
 - **Employee/Requester** – people who need help. They can submit a request, provide the necessary information, and track its status.
 - **Department Staff** (IT, HR, Finance) – receive, process, and resolve requests assigned to their department. They can view request details, take ownership of requests, update their status, and resolve them.
-- **Admin/Manager** – oversees requests across all departments. They can monitor open and overdue requests, view workload across departments and staff, reassign requests when necessary, and monitor overall resolution performance
+- **Admin/Manager** – oversees requests across all departments. They can monitor open and overdue requests, view workload across departments and staff, reassign requests when necessary
 
 ## 3. Functional Requirements
 - Employees can submit a new request by selecting a department and describing the issue.
@@ -23,11 +23,12 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - Employees are notified when the status of their request changes.
 - Employees can view their complete request history.
 - Admins can view and monitor all requests across all departments.
+- Each department's requests must remain private and visible only to the relevant employee, authorized department staff, and authorized admins
+- Admins can view workload across departments and staff members.
 
 ## 4. Non-Functional Requirements
 - The system must be accessible from both desktop and mobile browsers.
 - Status updates must be reflected within a few seconds of being made.
-- Each department's requests must remain private and visible only to the relevant employee, authorized department staff, and authorized admins
 - The interface should be simple and require no training to use.
 
 ## 5. Known Facts
@@ -42,7 +43,7 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - Is there a need for priority levels (urgent vs. normal)?
 - Should employees be able to comment back and forth with staff on a request?
 - Will more departments be added later?
-- hould employees be able to cancel a request after submitting it?
+- should employees be able to cancel a request after submitting it?
 - Who sets the expected resolution date, and when should it be assigned?
 
 ## 7. Assumptions / Constraints
