@@ -19,7 +19,7 @@ This model is derived from the product requirements and architecture rather than
 5. **Keep authorization data available to the backend.** User role and department are needed to enforce the server-side access rules defined by the architecture.
 6. **Model departments as data, not a hardcoded enum.** IT, HR, and Finance exist at launch, but the product spec leaves future departments as an open question.
 
-Traceability: SPEC1, SPEC2, SPEC4, SPEC6, SPEC9, FR1–FR11, NFR2–NFR3.
+Traceability: SPEC1, SPEC2, SPEC4, SPEC6, SPEC9, FR1–FR13, NFR2.
 
 ---
 
@@ -41,7 +41,7 @@ Represents an internal company employee who interacts with the Service Hub.
 - Staff ownership needs to identify a staff member.
 - Server-side authorization needs the current user's role and department.
 
-**Traceability:** FR1–FR6, FR10–FR11, NFR3, SPEC3, SPEC6, SPEC9.
+**Traceability:** FR1–FR6, FR10–FR11, FR12, SPEC3, SPEC6, SPEC9.
 
 ---
 
@@ -60,7 +60,7 @@ Represents an organizational support department.
 - Admins need a combined cross-department view.
 - Keeping departments as data allows a future department to be added without changing the model itself.
 
-**Traceability:** FR1, FR3, FR6, FR11, NFR3, SPEC1, SPEC2.
+**Traceability:** FR1, FR3, FR6, FR11, FR12, SPEC1, SPEC2.
 
 ---
 
@@ -82,7 +82,7 @@ The central business entity. It represents an employee's request for help from a
 **Why it exists**
 This entity supports submission, ownership, status, expected resolution, overdue monitoring, employee history, department queues, reassignment, and admin monitoring.
 
-**Traceability:** FR1–FR11, SPEC2, SPEC4, SPEC8, NFR2–NFR3.
+**Traceability:** FR1–FR13, SPEC2, SPEC4, SPEC8, NFR2.
 
 ---
 
@@ -146,7 +146,7 @@ Request
 
 A staff member may take ownership only when the request is in that staff member's department. An admin may assign/reassign a request to an appropriate staff member and may move the request to another department when it was submitted incorrectly.
 
-Traceability: FR5–FR6, SPEC4, SPEC6, NFR3, architecture §3.1.
+Traceability: FR5–FR6, SPEC4, SPEC6, FR12, architecture §3.1.
 
 ---
 
@@ -198,7 +198,7 @@ Authorization is enforced by the Backend API, not by the frontend.
 
 The data model therefore must retain requester, department, owner, and user role/department information needed for these checks.
 
-Traceability: NFR3, FR3–FR6, FR11, edge case §10; architecture §3.1.
+Traceability: FR12, FR3–FR6, FR11, FR13, edge case §10; architecture §3.1.
 
 ---
 
@@ -244,7 +244,7 @@ A document-oriented model is not necessary to satisfy the known requirements and
 
 This is a storage **reasoning decision**, not a physical schema prescription. Table names, SQL types, foreign-key syntax, and exact indexes remain implementation work outside the current v0.1 scope.
 
-Traceability: SPEC1–SPEC2, FR10–FR11, NFR3; architecture §4.2 and §5.
+Traceability: SPEC1–SPEC2, FR10–FR11, FR12; architecture §4.2 and §5.
 
 ---
 
@@ -259,7 +259,7 @@ Find requests where requester_id = current_user
 Optionally filter/order by current status or creation/update time.
 ```
 
-Supports: FR2, FR10, NFR3.
+Supports: FR2, FR10, FR12.
 
 ### AP2 — Department staff views queue
 
@@ -268,7 +268,7 @@ Find requests where department_id = current_staff.department
 and the request is active.
 ```
 
-Supports: FR3, NFR3.
+Supports: FR3, FR12.
 
 ### AP3 — Staff updates a request
 
@@ -277,7 +277,7 @@ Load request by request_id
 then verify department authorization before changing status/ownership.
 ```
 
-Supports: FR4–FR5, NFR3.
+Supports: FR4–FR5, FR12.
 
 ### AP4 — Admin views all requests
 
@@ -310,13 +310,13 @@ Supports: FR10.
 Aggregate active requests by owner_id, optionally grouped by department.
 ```
 
-Supports: edge case §10 and the admin workload requirement.
+Supports: edge case §10, FR13.
 
 ### Index reasoning
 
 At the physical implementation stage, indexes should be justified by these access patterns. The architecture identifies `department`, `requester_id`, `status`, and `expected_resolution_date` as likely useful indexed fields for the expected workload, but this document does not prescribe the final physical index design.
 
-Traceability: architecture §3.2; FR2–FR3, FR8, FR10–FR11.
+Traceability: architecture §3.2; FR2–FR3, FR8, FR10–FR11, FR13.
 
 ---
 
@@ -335,10 +335,11 @@ Traceability: architecture §3.2; FR2–FR3, FR8, FR10–FR11.
 | FR9 Notifications | Status History/current status provides committed change for notification |
 | FR10 Full history | Request Status History |
 | FR11 Admin monitoring | Department relationship + request collection supports cross-department reads |
+| FR12 Privacy | Requester, department, owner + role/department context support server-side filters |
+| FR13 Admin workload monitoring | Request.owner_id + department_id support aggregation by staff/department |
 | NFR1 Browser access | Not a data-model concern; handled by architecture/client |
 | NFR2 Few-second status reflection | Current status is directly persisted/read; synchronous DB path |
-| NFR3 Privacy | Requester, department, owner + role/department context support server-side filters |
-| NFR4 Simple UI | No unnecessary model complexity |
+| NFR3 Simple UI | No unnecessary model complexity |
 | SPEC1 | Department entity contains IT/HR/Finance at launch |
 | SPEC2 | Exactly one department per Request |
 | SPEC4 | Optional Request.owner_id |
