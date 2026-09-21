@@ -100,6 +100,7 @@ Department is modeled as an entity rather than a hardcoded enum. If a fourth dep
 - **FR2–FR6:** requester, department, status, and owner relationships.
 - **FR10:** request status history.
 - **FR11:** unified cross-department admin view.
-- **NFR3:** department-level privacy/isolation.
+- **FR12:** department-level privacy/isolation.
+- **FR13:** admin workload aggregation by owner and department.
 - **Architecture §3.2:** relational database and expected indexes are sufficient for current scale.
 - **Architecture §4.2:** explicit decision for a single relational database and no per-department databases.
