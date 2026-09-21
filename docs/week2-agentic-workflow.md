@@ -18,4 +18,4 @@ The assignment requires two valid half-step transitions and one invalid full-pat
 
 ## Implementation Traceability
 
-The lifecycle is enforced by the request state machine. The service uses the state machine before applying a status transition, so the invalid `Open → Resolved` transition is rejected instead of being applied directly.
+The lifecycle is enforced in the Backend API (FR4). Before applying a status change, the API checks the current status against the allowed transitions, so Open → Resolved is rejected and the status stays Open. See data model §5.1.
