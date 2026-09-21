@@ -100,7 +100,7 @@ x-user-role: Employee | Staff | Admin
 x-user-department-id: DEPT-IT     (required for Staff)
 ```
 
-These headers are **not presented as production authentication**. They simulate the identity context that the external company Identity Provider would supply. Authorization is still enforced on the server, which preserves the architectural boundary required by NFR3 and SPEC9.
+These headers are **not presented as production authentication**. They simulate the identity context that the external company Identity Provider would supply. Authorization is still enforced on the server, which preserves the architectural boundary required by FR12 and SPEC9.
 
 ## Create request
 
