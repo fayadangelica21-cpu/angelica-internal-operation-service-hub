@@ -12,19 +12,20 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - **Admin/Manager** – oversees requests across all departments. They can monitor open and overdue requests, view workload across departments and staff, reassign requests when necessary
 
 ## 3. Functional Requirements
-- Employees can submit a new request by selecting a department and describing the issue.
-- Employees can view the status of their own requests (e.g., Open, In Progress, Resolved).
-- Department staff can view requests assigned to their department.
-- Department staff can update the status of a request.
-- Department staff can take ownership of requests, and admins can assign or reassign requests to appropriate staff members
-- Admins can reassign a request to a different department when it has been submitted to the wrong department
-- Requests can have an expected resolution date.
-- Admins can identify requests that have passed their expected resolution date.
-- Employees are notified when the status of their request changes.
-- Employees can view their complete request history.
-- Admins can view and monitor all requests across all departments.
-- Each department's requests must remain private and visible only to the relevant employee, authorized department staff, and authorized admins
-- Admins can view workload across departments and staff members.
+1. Employees can submit a new request by selecting a department and describing the issue.
+2. Employees can request an AI-assisted triage step before final submission. The AI suggests a likely department and next step based only on the issue description and a minimal bounded context, and the backend validates each response before showing it to the employee.
+3. Employees can view the status of their own requests (e.g., Open, In Progress, Resolved).
+4. Department staff can view requests assigned to their department.
+5. Department staff can update the status of a request.
+6. Department staff can take ownership of requests, and admins can assign or reassign requests to appropriate staff members.
+7. Admins can reassign a request to a different department when it has been submitted to the wrong department.
+8. Requests can have an expected resolution date.
+9. Admins can identify requests that have passed their expected resolution date.
+10. Employees are notified when the status of their request changes.
+11. Employees can view their complete request history.
+12. Admins can view and monitor all requests across all departments.
+13. Each department's requests must remain private and visible only to the relevant employee, authorized department staff, and authorized admins.
+14. Admins can view workload across departments and staff members.
 
 ## 4. Non-Functional Requirements
 - The system must be accessible from both desktop and mobile browsers.
@@ -57,7 +58,8 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - Not building a full ticketing system with SLAs, escalation rules, or automated routing.
 - Not replacing existing dedicated HR or Finance software systems.
 - Not handling payroll, benefits, or any HR data beyond the request itself.
-- Not building AI features or chatbots at this stage.
+- Not allowing the AI to create, mutate, or route a final request without backend validation.
+- Not persisting the AI triage suggestion as the source of truth for the final request; it is only a pre-submission recommendation.
 - Not supporting request creation through email, chat, or other informal channels in the initial version.
 
 ## 9. Acceptance Criteria (Examples of Correct Behavior)
@@ -66,6 +68,8 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - IT staff marks it "Resolved" → it moves out of the active queue and into the employee's resolved history.
 - An HR request never appears in the IT staff's queue, and vice versa.
 - An admin can see all three departments' requests in one combined view.
+- An employee enters a request description and requests AI triage → the backend returns a strict structured JSON suggestion with a fixed department and issue type, and the employee can review it before submitting the actual request.
+- If the AI returns an invalid shape or provider failure occurs → the backend rejects it and does not pass untrusted data to the frontend.
 
 ## 10. Error / Edge Cases & Bad Scenarios
 - Employee selects the wrong department – The request should not be lost. An admin can reassign it to the correct department, and the employee can see the updated department/status.
