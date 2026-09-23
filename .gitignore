@@ -1,6 +1,8 @@
 node_modules
 dist
+playwright-report
+test-results
+.env
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-.env

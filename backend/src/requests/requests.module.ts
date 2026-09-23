@@ -4,11 +4,14 @@ import { RequestEntity } from './entities/request.entity';
 import { RequestStateMachineService } from './request-state-machine.service';
 import { RequestsController } from './requests.controller';
 import { RequestsService } from './requests.service';
+import { TriageController } from '../triage/triage.controller';
+import { TriageProviderService } from '../triage/triage-provider.service';
+import { TriageService } from '../triage/triage.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([RequestEntity])],
-  controllers: [RequestsController],
-  providers: [RequestsService, RequestStateMachineService],
-  exports: [RequestsService, RequestStateMachineService],
+  controllers: [RequestsController, TriageController],
+  providers: [RequestsService, RequestStateMachineService, TriageService, TriageProviderService],
+  exports: [RequestsService, RequestStateMachineService, TriageService, TriageProviderService],
 })
 export class RequestsModule {}

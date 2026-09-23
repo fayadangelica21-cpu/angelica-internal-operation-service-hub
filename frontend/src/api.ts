@@ -8,6 +8,17 @@ export type RequestRecord = {
   status: string;
 };
 
+export type TriageSuggestion = {
+  draftId: string;
+  departmentId: 'DEPT-IT' | 'DEPT-HR' | 'DEPT-FINANCE' | null;
+  issueType: string;
+  suggestedNextStep: string;
+  confidence: number;
+  requiresMoreInfo: boolean;
+  classification: 'clear' | 'thin' | 'ambiguous' | 'unrelated';
+  reasoning: string;
+};
+
 function readErrorMessage(body: unknown): string {
   if (body && typeof body === 'object' && 'message' in body) {
     const message = (body as { message: unknown }).message;
@@ -32,4 +43,27 @@ export async function createRequest(departmentId: string, description: string): 
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(readErrorMessage(body));
   return body as RequestRecord;
+}
+
+export async function getTriageSuggestion(
+  description: string,
+  selectedDepartmentId?: string | null,
+): Promise<TriageSuggestion> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/triage`, {
+      method: 'POST',
+      headers: identityHeaders,
+      body: JSON.stringify({
+        description,
+        selectedDepartmentId: selectedDepartmentId ?? null,
+      }),
+    });
+  } catch {
+    throw new Error('The AI triage service is unreachable. Start the backend and try again.');
+  }
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(readErrorMessage(body));
+  return body as TriageSuggestion;
 }
