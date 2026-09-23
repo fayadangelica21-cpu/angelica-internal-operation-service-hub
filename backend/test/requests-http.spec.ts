@@ -90,4 +90,25 @@ describe('Requests HTTP boundaries', () => {
       .send({ departmentId: 'DEPT-IT', description: 'Need a mouse' })
       .expect(403);
   });
+
+  it('returns the backend-owned triage contract for a valid employee request', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/triage')
+      .set(employeeHeaders('EMP-001'))
+      .send({ description: 'Laptop screen flickers', selectedDepartmentId: 'DEPT-IT' })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      draftId: expect.any(String),
+      departmentId: 'DEPT-IT',
+      issueType: expect.any(String),
+      suggestedNextStep: expect.any(String),
+      confidence: expect.any(Number),
+      requiresMoreInfo: expect.any(Boolean),
+      classification: expect.any(String),
+      reasoning: expect.any(String),
+    });
+    expect(response.body.confidence).toBeGreaterThanOrEqual(0);
+    expect(response.body.confidence).toBeLessThanOrEqual(1);
+  });
 });
