@@ -17,9 +17,10 @@ This model is derived from the product requirements and architecture rather than
 3. **Keep ownership representable.** Every request must belong to exactly one department, while its staff owner may be absent until someone takes ownership.
 4. **Keep history separate from current state.** The current request status answers “where is it now?”; status history answers “what happened before?”.
 5. **Keep authorization data available to the backend.** User role and department are needed to enforce the server-side access rules defined by the architecture.
-6. **Model departments as data, not a hardcoded enum.** IT, HR, and Finance exist at launch, but the product spec leaves future departments as an open question.
+6. **Keep the AI triage suggestion as a separate, non-persistent recommendation layer.** The suggestion may inform the employee before final submission, but the durable request record is created only after the employee submits the actual request.
+7. **Model departments as data, not a hardcoded enum.** IT, HR, and Finance exist at launch, but the product spec leaves future departments as an open question.
 
-Traceability: SPEC1, SPEC2, SPEC4, SPEC6, SPEC9, FR1–FR13, NFR2.
+Traceability: SPEC1, SPEC2, SPEC4, SPEC6, SPEC9, FR1–FR14, NFR2.
 
 ---
 
@@ -41,7 +42,7 @@ Represents an internal company employee who interacts with the Service Hub.
 - Staff ownership needs to identify a staff member.
 - Server-side authorization needs the current user's role and department.
 
-**Traceability:** FR1–FR6, FR10–FR11, FR12, SPEC3, SPEC6, SPEC9.
+**Traceability:** FR1, FR2, FR3, FR6, FR12, FR13, SPEC3, SPEC6, SPEC9.
 
 ---
 
@@ -60,7 +61,7 @@ Represents an organizational support department.
 - Admins need a combined cross-department view.
 - Keeping departments as data allows a future department to be added without changing the model itself.
 
-**Traceability:** FR1, FR3, FR6, FR11, FR12, SPEC1, SPEC2.
+**Traceability:** FR1, FR4, FR7, FR12, FR13, SPEC1, SPEC2.
 
 ---
 
@@ -82,7 +83,7 @@ The central business entity. It represents an employee's request for help from a
 **Why it exists**
 This entity supports submission, ownership, status, expected resolution, overdue monitoring, employee history, department queues, reassignment, and admin monitoring.
 
-**Traceability:** FR1–FR13, SPEC2, SPEC4, SPEC8, NFR2.
+**Traceability:** FR1–FR14, SPEC2, SPEC4, SPEC8, NFR2.
 
 ---
 
@@ -101,7 +102,26 @@ Represents an immutable record of a request's status changes over time.
 **Why it exists**
 The product explicitly requires employees to view their complete request history. The architecture also separates current request state from historical information. Current `status` alone cannot reconstruct a reliable audit/history trail.
 
-**Traceability:** FR4, FR9, FR10, NFR2, acceptance criteria in §9.
+**Traceability:** FR5, FR10, FR11, NFR2, acceptance criteria in §9.
+
+### 2.5 Triage Suggestion (ephemeral, not persisted)
+
+Represents a temporary AI-generated suggestion returned before the employee finalizes the request.
+
+**Important facts**
+- `draftId` — unique identifier for the triage suggestion instance.
+- `departmentId` — recommended department, if the model is confident enough to propose one.
+- `issueType` — normalized issue category such as `hardware`, `software`, `access`, `hr_policy`, or `finance`.
+- `suggestedNextStep` — actionable guidance for the employee before a final request is created.
+- `confidence` — numeric confidence score in the range `[0, 1]`.
+- `requiresMoreInfo` — whether the suggestion is incomplete and needs manual clarification.
+- `classification` — one of `clear`, `thin`, `ambiguous`, or `unrelated`.
+- `reasoning` — short backend-visible explanation used by the decision layer.
+
+**Why it exists**
+The AI feature is intentionally a pre-submission recommendation. It helps the employee understand the likely department and next step, but it is not the same as a final request and must never mutate the durable request record on its own.
+
+**Traceability:** FR2, architecture AI component, backend `TriageAiResponseDto` validation contract.
 
 ---
 
@@ -115,12 +135,13 @@ The product explicitly requires employees to view their complete request history
 | Request → Request Status History | 1 → many | A request accumulates status changes | History belongs to exactly one request |
 | User → Request Status History | 1 → many | A user can cause many transitions | Every transition records its actor |
 | Department → User | 1 → many | Staff are associated with a department | Staff are pre-assigned; no self-selection |
+| Triage Suggestion → Request (logical only) | many → 0..1 | A suggestion may inform a request before submission, but it is not persisted as part of the request | The suggestion is a recommendation only; the final request record is created separately |
 
 ### Key invariant
 
 `Request.department_id` must contain **exactly one** department reference. The request cannot simultaneously belong to IT and HR, for example. If an employee selects the wrong department, an admin changes the request's department rather than creating a second request.
 
-Traceability: SPEC2, FR5–FR6, edge case §10.
+Traceability: SPEC2, FR6–FR7, edge case §10.
 
 ---
 
@@ -146,7 +167,7 @@ Request
 
 A staff member may take ownership only when the request is in that staff member's department. An admin may assign/reassign a request to an appropriate staff member and may move the request to another department when it was submitted incorrectly.
 
-Traceability: FR5–FR6, SPEC4, SPEC6, FR12, architecture §3.1.
+Traceability: FR6–FR7, SPEC4, SPEC6, FR13, architecture §3.1.
 
 ---
 
@@ -170,8 +191,9 @@ The model must preserve the current status on `Request` and each change in `Requ
 4. When a request becomes **Resolved**, it moves out of the active queue and remains available in the employee's resolved history.
 5. A status transition is recorded in status history.
 6. A status change must be persisted before notification is treated as successful; notification is a side effect, not the source of truth.
+7. A triage suggestion is a separate ephemeral recommendation and is not treated as a durable request lifecycle event.
 
-Traceability: FR4, FR9–FR10, acceptance criteria §9; architecture §4.1.
+Traceability: FR5, FR10–FR11, acceptance criteria §9; architecture §4.1; AI triage contract.
 
 ### 5.3 Overdue rule
 
@@ -184,7 +206,7 @@ AND request is not yet resolved
 
 `is_overdue` should be **derived**, not stored as an independent durable field, because the condition changes with time and can become stale.
 
-Traceability: FR7–FR8, edge case §10, architecture §2.3.
+Traceability: FR8–FR9, edge case §10, architecture §2.3.
 
 ### 5.4 Authorization-sensitive rules
 
@@ -198,7 +220,7 @@ Authorization is enforced by the Backend API, not by the frontend.
 
 The data model therefore must retain requester, department, owner, and user role/department information needed for these checks.
 
-Traceability: FR12, FR3–FR6, FR11, FR13, edge case §10; architecture §3.1.
+Traceability: FR13, FR4–FR7, FR12, FR14, edge case §10; architecture §3.1.
 
 ---
 
@@ -216,6 +238,7 @@ Traceability: FR12, FR3–FR6, FR11, FR13, edge case §10; architecture §3.1.
 | Created/updated timestamps | Durable | Request timing and operational history |
 | Status history | Durable | Required full request history |
 | User role/department | Durable/authoritative from identity context | Needed for authorization decisions |
+| AI triage suggestion payload | Temporary / non-durable | Only a recommendation before the final request is submitted |
 | `is_overdue` | **Derived** | Depends on current time + expected resolution date + current state |
 | Department queue membership | **Derived** | Query of requests by department/status |
 | Active vs resolved queue | **Derived** | Query of current status |
@@ -236,6 +259,7 @@ This follows the architecture decision because:
 - requests have clear relationships to users and departments;
 - every request belongs to exactly one department;
 - admin needs one combined view across all departments;
+
 - request history has a clear parent-child relationship with requests;
 - authorization filters depend on structured requester/department ownership;
 - the product is a single-company system with only three departments at launch.
@@ -259,7 +283,7 @@ Find requests where requester_id = current_user
 Optionally filter/order by current status or creation/update time.
 ```
 
-Supports: FR2, FR10, FR12.
+Supports: FR3, FR11, FR13.
 
 ### AP2 — Department staff views queue
 
@@ -268,7 +292,7 @@ Find requests where department_id = current_staff.department
 and the request is active.
 ```
 
-Supports: FR3, FR12.
+Supports: FR4, FR13.
 
 ### AP3 — Staff updates a request
 
@@ -277,7 +301,7 @@ Load request by request_id
 then verify department authorization before changing status/ownership.
 ```
 
-Supports: FR4–FR5, FR12.
+Supports: FR5–FR6, FR13.
 
 ### AP4 — Admin views all requests
 
@@ -285,7 +309,7 @@ Supports: FR4–FR5, FR12.
 Find/aggregate requests across departments.
 ```
 
-Supports: FR11.
+Supports: FR12.
 
 ### AP5 — Admin finds overdue requests
 
@@ -294,7 +318,7 @@ Find requests whose expected_resolution_date is before now
 and whose current status is not Resolved.
 ```
 
-Supports: FR8.
+Supports: FR9.
 
 ### AP6 — Employee views complete history
 
@@ -302,7 +326,7 @@ Supports: FR8.
 Find status-history records for one request, ordered chronologically.
 ```
 
-Supports: FR10.
+Supports: FR11.
 
 ### AP7 — Admin monitors staff workload
 
@@ -310,33 +334,44 @@ Supports: FR10.
 Aggregate active requests by owner_id, optionally grouped by department.
 ```
 
-Supports: edge case §10, FR13.
+Supports: edge case §10, FR14.
 
 ### Index reasoning
 
 At the physical implementation stage, indexes should be justified by these access patterns. The architecture identifies `department`, `requester_id`, `status`, and `expected_resolution_date` as likely useful indexed fields for the expected workload, but this document does not prescribe the final physical index design.
 
-Traceability: architecture §3.2; FR2–FR3, FR8, FR10–FR11, FR13.
+Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 ---
 
 ## 9. Traceability Matrix
 
+### 9.1 Implementation status by requirement
+
+| Status | Requirement(s) | Rationale |
+|---|---|---|
+| Implemented | FR1, FR2 | Proven end-to-end in the current project slice: employee request submission and AI triage are implemented and validated across the frontend/backend flow. |
+| Partial | FR3, FR4, FR12 | Some data-model and backend support exists, but the full end-to-end user story is not yet fully proven and validated in the project scope. |
+| Not implemented | FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR13, FR14 | These requirements are either not yet built, not fully validated end-to-end, or explicitly out of the current implemented slice. |
+
+### 9.2 Requirement-to-model mapping
+
 | Requirement | Data-model support |
 |---|---|
 | FR1 Submit request | Request: requester, department, description, initial status |
-| FR2 Own status | Request.requester + current status |
-| FR3 Department queue | Request.department + current status |
-| FR4 Update status | Request.status + Status History |
-| FR5 Ownership/assignment | Request.owner_id |
-| FR6 Department reassignment | Request.department_id can be changed by authorized admin |
-| FR7 Expected date | Request.expected_resolution_date |
-| FR8 Overdue detection | Derived from expected date + current status |
-| FR9 Notifications | Status History/current status provides committed change for notification |
-| FR10 Full history | Request Status History |
-| FR11 Admin monitoring | Department relationship + request collection supports cross-department reads |
-| FR12 Privacy | Requester, department, owner + role/department context support server-side filters |
-| FR13 Admin workload monitoring | Request.owner_id + department_id support aggregation by staff/department |
+| FR2 AI triage suggestion | Triage Suggestion (ephemeral payload) + backend validation before final request submission |
+| FR3 Employee views own status | Request.requester + current status |
+| FR4 Department staff view queue | Request.department + current status |
+| FR5 Staff update status | Request.status + Status History |
+| FR6 Ownership/assignment | Request.owner_id |
+| FR7 Department reassignment | Request.department_id can be changed by authorized admin |
+| FR8 Expected date | Request.expected_resolution_date |
+| FR9 Overdue detection | Derived from expected date + current status |
+| FR10 Notifications | Status History/current status provides committed change for notification |
+| FR11 Full history | Request Status History |
+| FR12 Admin cross-department monitoring | Department relationship + request collection supports cross-department reads |
+| FR13 Privacy/isolation | Requester, department, owner + role/department context support server-side filters |
+| FR14 Admin workload monitoring | Request.owner_id + department_id support aggregation by staff/department |
 | NFR1 Browser access | Not a data-model concern; handled by architecture/client |
 | NFR2 Few-second status reflection | Current status is directly persisted/read; synchronous DB path |
 | NFR3 Simple UI | No unnecessary model complexity |
@@ -358,7 +393,7 @@ The following are intentionally **not** modeled because the product specificatio
 - Request cancellation — still an unknown.
 - SLAs/escalation automation — explicitly out of scope.
 - Payroll/benefits/HR records — explicitly out of scope.
-- AI/chatbot data — explicitly out of scope.
+- Autonomous AI-created requests without human review — explicitly out of scope.
 - Email-created requests — explicitly out of scope.
 - Multi-tenant organization data — explicitly out of scope.
 
@@ -389,24 +424,37 @@ These questions are deliberately recorded rather than silently answered in the v
 User ───────────────< Request >────────────── Department
   │                      │                        │
   │                      │                        │
-  └───────< Status       └──── owner_id ─────────┘
-            History
+  ├───────< Status       └──── owner_id ─────────┘
+  │          History
+  │
+  └── requests triage suggestion ─────► Triage Suggestion (ephemeral, non-persistent)
 
 Request
- ├─ requester_id       → User
- ├─ department_id      → Department (required, exactly one)
- ├─ owner_id           → User (optional)
+ ├─ requester_id         → User
+ ├─ department_id        → Department (required, exactly one)
+ ├─ owner_id             → User (optional)
  ├─ description
- ├─ status             → current lifecycle state
+ ├─ status               → current lifecycle state
  ├─ expected_resolution_date
  └─ timestamps
 
 Request Status History
- ├─ request_id         → Request
+ ├─ request_id           → Request
  ├─ from_status
  ├─ to_status
- ├─ changed_by_user_id → User
+ ├─ changed_by_user_id   → User
  └─ changed_at
+
+Triage Suggestion
+ ├─ draftId
+ ├─ departmentId
+ ├─ issueType
+ ├─ suggestedNextStep
+ ├─ confidence
+ ├─ requiresMoreInfo
+ ├─ classification
+ ├─ reasoning
+ └─ created only as a recommendation before final submission
 ```
 
-**Definition of done:** another engineer should be able to explain what the system remembers, how those facts connect, which lifecycle and authorization rules matter, which values are derived, why relational storage fits, and how real product queries access the data.
+**Definition of done:** another engineer should be able to explain what the system remembers, how those facts connect, which lifecycle and authorization rules matter, which values are derived, why relational storage fits, how real product queries access the data, and that the AI triage suggestion is an ephemeral recommendation rather than a durable request record.
