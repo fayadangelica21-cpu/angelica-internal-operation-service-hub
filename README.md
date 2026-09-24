@@ -29,7 +29,7 @@ Open → In Progress → Resolved
 - Automated business-rule, integration, and E2E tests
 - Regression protection for the forbidden `Open → Resolved` jump
 
-Out of scope for Week 3: real SSO, notifications, CI/CD, deployment, and production infrastructure. Identity for local runs uses development headers. The backend still makes every authorization decision.
+Out of scope for Week 4: real SSO, notifications, CI/CD, deployment, and production infrastructure. Identity for local runs uses development headers. The backend still makes every authorization decision.
 
 ---
 
@@ -97,7 +97,7 @@ VITE_USER_ID=EMP-001
 VITE_USER_ROLE=Employee
 ```
 
-This file is standard Vite setup so TypeScript recognizes `import.meta.env` without errors. The frontend in this Week 3 slice runs as an Employee. Staff/Admin identities are exercised through API/curl tests.
+This file is standard Vite setup so TypeScript recognizes `import.meta.env` without errors. The frontend in this Week 4 slice runs as an Employee. Staff/Admin identities are exercised through API/curl tests.
 
 ### Stop the project
 
