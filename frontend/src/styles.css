@@ -172,6 +172,39 @@ button {
   min-height: 680px;
 }
 
+.department-queue-panel {
+  width: min(100%, 860px);
+  min-height: 0;
+  height: auto;
+}
+
+.queue-heading,
+.queue-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.queue-heading h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+}
+
+.queue-toolbar {
+  margin-top: 12px;
+}
+
+.queue-request-card {
+  margin-top: 16px;
+}
+
+.queue-empty {
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .assistant-panel {
   position: sticky;
   top: 20px;
@@ -613,6 +646,12 @@ textarea:focus {
 
   .panel {
     padding: 20px;
+  }
+
+  .queue-heading,
+  .queue-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
