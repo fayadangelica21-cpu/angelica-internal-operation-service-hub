@@ -54,6 +54,9 @@ describe('Requests HTTP boundaries', () => {
   });
 
   const employeeHeaders = (id: string) => ({ Authorization: `Bearer test:${id}:Employee` });
+  const staffHeaders = (id: string, departmentId: string) => ({
+    Authorization: `Bearer test:${id}:Staff:${departmentId}`,
+  });
 
   it('rejects a create payload with no description', async () => {
     await request(app.getHttpServer())
@@ -101,6 +104,62 @@ describe('Requests HTTP boundaries', () => {
     await request(app.getHttpServer())
       .get(`/requests/${created.body.id}`)
       .set(employeeHeaders('EMP-002'))
+      .expect(403);
+  });
+
+  it('returns only active requests from the authenticated Staff member’s own department', async () => {
+    const itRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-021'))
+      .send({ departmentId: 'DEPT-IT', description: 'IT queue item that should appear' })
+      .expect(201);
+    const hrRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-020'))
+      .send({ departmentId: 'DEPT-HR', description: 'HR queue item that must stay private' })
+      .expect(201);
+    const resolvedRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-022'))
+      .send({ departmentId: 'DEPT-IT', description: 'Resolved IT request' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${resolvedRequest.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-1', 'DEPT-IT'))
+      .send({ ownerId: 'STAFF-IT-1' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`/requests/${resolvedRequest.body.id}/status`)
+      .set(staffHeaders('STAFF-IT-1', 'DEPT-IT'))
+      .send({ targetStatus: 'Resolved' })
+      .expect(200);
+
+    const response = await request(app.getHttpServer())
+      .get('/requests/queue')
+      .set(staffHeaders('STAFF-IT-1', 'DEPT-IT'))
+      .expect(200);
+
+    const returnedIds = response.body.map((item: { id: string }) => item.id);
+    expect(returnedIds).toContain(itRequest.body.id);
+    expect(returnedIds).not.toContain(hrRequest.body.id);
+    expect(returnedIds).not.toContain(resolvedRequest.body.id);
+    expect(response.body.every((item: { departmentId: string; status: string }) =>
+      item.departmentId === 'DEPT-IT' && item.status !== 'Resolved')).toBe(true);
+  });
+
+  it('denies queue access to Employees, Admins, and Staff without a department assignment', async () => {
+    await request(app.getHttpServer())
+      .get('/requests/queue')
+      .set(employeeHeaders('EMP-023'))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/requests/queue')
+      .set({ Authorization: 'Bearer test:ADMIN-1:Admin' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/requests/queue')
+      .set({ Authorization: 'Bearer test:STAFF-NO-DEPT:Staff' })
       .expect(403);
   });
 
