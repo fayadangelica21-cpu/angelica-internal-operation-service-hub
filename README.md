@@ -22,6 +22,7 @@ Open → In Progress → Resolved
 - NestJS API with an explicit contract
 - SQLite persistence through TypeORM
 - Firebase-authenticated Staff can view active requests in their assigned department; the backend derives the department from the verified identity
+- Employees can view their own submitted requests and current statuses; the backend scopes the list to the verified Firebase UID
 - Backend-controlled AI triage step via `POST /triage` with a strict fixed JSON response contract
 - AI payload is bounded to only the information needed for triage; the backend validates the response before showing it
 - Authorization: an employee can create a request as themselves; another employee cannot read it (`403`)
@@ -225,6 +226,15 @@ Success (`201`):
 
 `departmentId` must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`. Description is required (whitespace-only is rejected).
 
+### View your requests (Employee)
+
+```http
+GET /requests
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+```
+
+The backend returns all requests belonging to the authenticated Employee, including resolved requests, ordered newest first. The requester ID is derived from the verified Firebase identity; caller-supplied IDs are ignored. Staff and Admin accounts receive `403 Forbidden` from this employee-only endpoint. The Employee page refreshes the list after submission, provides a refresh button, and checks for status changes in the background while the page is visible.
+
 ### View the department queue
 
 ```http
@@ -348,7 +358,7 @@ npm run test:all
 | Command | What it proves |
 |---|---|
 | `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
-| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Staff claim and resolve actions. |
+| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering and Staff claim/resolve actions. |
 | `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
 | `npm run test:all` | All backend tests |
 
@@ -361,7 +371,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission, and Staff processing a request from `Open` through `In Progress` to `Resolved`, including the short fade-and-slide as a resolved request leaves the queue while other queue cards stay visible. It also verifies that a claimed request moves to the top, and that a competing claim is reported so Staff can refresh the queue and see the updated state. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, and Staff processing a request from `Open` through `In Progress` to `Resolved`, including the short fade-and-slide as a resolved request leaves the queue while other queue cards stay visible. It also verifies that a claimed request moves to the top, and that a competing claim is reported so Staff can refresh the queue and see the updated state. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
