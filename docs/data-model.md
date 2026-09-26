@@ -350,8 +350,8 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 | Status | Requirement(s) | Rationale |
 |---|---|---|
-| Implemented | FR1, FR2, FR4, FR5 | FR1 and FR2 are proven across their frontend/backend flows. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`); backend HTTP, SQLite integration, and Playwright tests cover the processing flow and authorization boundaries. |
-| Partial | FR3, FR6, FR12 | Employee request history and Admin cross-department view are not implemented end-to-end. Staff self-ownership is implemented under FR6, but Admin assignment/reassignment is not. |
+| Implemented | FR1, FR2, FR3, FR4, FR5 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`); backend HTTP, SQLite integration, and Playwright tests cover the processing flow and authorization boundaries. |
+| Partial | FR6, FR12 | Admin cross-department view is not implemented end-to-end. Staff self-ownership is implemented under FR6, but Admin assignment/reassignment is not. |
 | Not implemented | FR7, FR8, FR9, FR10, FR11, FR13, FR14 | These requirements are either not yet built, not fully validated end-to-end, or explicitly out of the current implemented slice. |
 
 ### 9.2 Requirement-to-model mapping

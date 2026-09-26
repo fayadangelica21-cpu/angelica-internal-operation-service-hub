@@ -94,6 +94,62 @@ describe('Requests HTTP boundaries', () => {
     expect(response.body.status).toBe('Open');
   });
 
+  it('lists only the authenticated employee’s requests and includes their resolved requests', async () => {
+    const resolvedRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-OWN-LIST'))
+      .send({ departmentId: 'DEPT-IT', description: 'My resolved request' })
+      .expect(201);
+    const openRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-OWN-LIST'))
+      .send({ departmentId: 'DEPT-FINANCE', description: 'My open request' })
+      .expect(201);
+    const privateRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-OTHER-LIST'))
+      .send({ departmentId: 'DEPT-HR', description: 'Another employee’s private request' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${resolvedRequest.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-LIST', 'DEPT-IT'))
+      .send({ ownerId: 'STAFF-IT-LIST' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`/requests/${resolvedRequest.body.id}/status`)
+      .set(staffHeaders('STAFF-IT-LIST', 'DEPT-IT'))
+      .send({ targetStatus: 'Resolved' })
+      .expect(200);
+
+    const ownRequests = await request(app.getHttpServer())
+      .get('/requests')
+      .query({ requesterId: 'EMP-OTHER-LIST' })
+      .set(employeeHeaders('EMP-OWN-LIST'))
+      .set('x-user-id', 'EMP-OTHER-LIST')
+      .expect(200);
+
+    const ownRequestIds = ownRequests.body.map((item: { id: string }) => item.id);
+    expect(ownRequestIds).toContain(resolvedRequest.body.id);
+    expect(ownRequestIds).toContain(openRequest.body.id);
+    expect(ownRequestIds).not.toContain(privateRequest.body.id);
+    expect(ownRequests.body.map((item: { status: string }) => item.status)).toEqual(
+      expect.arrayContaining(['Open', 'Resolved']),
+    );
+    expect(ownRequests.body.every((item: { requesterId: string }) => item.requesterId === 'EMP-OWN-LIST')).toBe(true);
+  });
+
+  it('denies request-list access to Staff and Admin roles', async () => {
+    await request(app.getHttpServer())
+      .get('/requests')
+      .set(staffHeaders('STAFF-IT-LIST-DENIED', 'DEPT-IT'))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/requests')
+      .set({ Authorization: 'Bearer test:ADMIN-LIST-DENIED:Admin' })
+      .expect(403);
+  });
+
   it('denies another employee from reading that request', async () => {
     const created = await request(app.getHttpServer())
       .post('/requests')

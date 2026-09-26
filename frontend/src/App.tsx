@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { createRequest, getDepartmentQueue, getTriageSuggestion, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createRequest, getDepartmentQueue, getTriageSuggestion, listOwnRequests, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -13,6 +13,12 @@ function getDepartmentLabel(departmentId: string | null): string {
   if (!departmentId) return 'Unclear';
   const match = DEPARTMENTS.find((department) => department.id === departmentId);
   return match ? match.label : departmentId;
+}
+
+function formatSubmittedAt(value?: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleString();
 }
 
 function getClassificationTone(classification: TriageSuggestion['classification']) {
@@ -43,12 +49,40 @@ function RequestApp() {
   const [loading, setLoading] = useState(false);
   const [triageLoading, setTriageLoading] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [departmentQueue, setDepartmentQueue] = useState<RequestRecord[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState('');
   const [queueNotice, setQueueNotice] = useState('');
   const [queueActionId, setQueueActionId] = useState<string | null>(null);
   const [queueRemovingId, setQueueRemovingId] = useState<string | null>(null);
+  const [ownRequests, setOwnRequests] = useState<RequestRecord[]>([]);
+  const [ownRequestsLoading, setOwnRequestsLoading] = useState(false);
+  const [ownRequestsError, setOwnRequestsError] = useState('');
+  const [ownRequestsNotice, setOwnRequestsNotice] = useState('');
+  const ownRequestsRefreshId = useRef(0);
+
+  async function refreshOwnRequests(silent = false) {
+    const refreshId = ++ownRequestsRefreshId.current;
+    if (!silent) setOwnRequestsLoading(true);
+    setOwnRequestsError('');
+    setOwnRequestsNotice('');
+    try {
+      const nextRequests = await listOwnRequests();
+      if (refreshId === ownRequestsRefreshId.current) setOwnRequests(nextRequests);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load your requests.';
+      if (refreshId === ownRequestsRefreshId.current) {
+        if (silent || ownRequests.length > 0) {
+          setOwnRequestsNotice('Could not refresh your requests. The displayed list is unchanged; please try again.');
+        } else {
+          setOwnRequestsError(message);
+        }
+      }
+    } finally {
+      if (refreshId === ownRequestsRefreshId.current) setOwnRequestsLoading(false);
+    }
+  }
 
   async function refreshDepartmentQueue(silent = false) {
     if (!silent) setQueueLoading(true);
@@ -96,6 +130,16 @@ function RequestApp() {
     if (user?.role === 'Staff') void refreshDepartmentQueue();
   }, [user?.id, user?.role]);
 
+  useEffect(() => {
+    if (user?.role !== 'Employee') return;
+    setOwnRequests([]);
+    void refreshOwnRequests();
+    const refreshInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshOwnRequests(true);
+    }, 5000);
+    return () => window.clearInterval(refreshInterval);
+  }, [user?.id, user?.role]);
+
   const requestReady = description.trim().length > 0;
   const helperText = useMemo(() => {
     if (!description.trim()) {
@@ -111,7 +155,7 @@ function RequestApp() {
   if (user.role !== 'Employee') {
     if (user.role === 'Staff') {
       return (
-        <main className="app-shell auth-shell">
+        <main className="app-shell auth-shell department-queue-shell">
           <section className="panel department-queue-panel" aria-label="Department request queue">
             <div className="queue-heading">
               <div>
@@ -138,41 +182,43 @@ function RequestApp() {
             {!queueLoading && !queueError && !queueNotice && departmentQueue.length === 0 && (
               <p className="queue-empty">No active requests in your department.</p>
             )}
-            {!queueError && departmentQueue.map((item) => (
-              <article
-                className={`status-card queue-request-card${queueRemovingId === item.id ? ' queue-request-card--removing' : ''}`}
-                key={item.id}
-              >
-                <div className="status-row">
-                  <strong>Request {item.id}</strong>
-                  <span className="status-badge">{item.status}</span>
-                </div>
-                <p className="submitted-description">{item.description}</p>
-                <div className="queue-request-footer">
-                  <span className="queue-department-label">{getDepartmentLabel(item.departmentId)}</span>
-                  {item.status === 'Open' && (
-                    <button
-                      className="btn btn-primary queue-action-button"
-                      type="button"
-                      onClick={() => void processQueueRequest(item)}
-                      disabled={queueLoading || queueActionId !== null}
-                    >
-                      {queueActionId === item.id ? 'Taking ownership…' : 'Take ownership'}
-                    </button>
-                  )}
-                  {item.status === 'In Progress' && (
-                    <button
-                      className="btn btn-secondary queue-action-button"
-                      type="button"
-                      onClick={() => void processQueueRequest(item)}
-                      disabled={queueLoading || queueActionId !== null}
-                    >
-                      {queueActionId === item.id ? 'Resolving…' : 'Resolve request'}
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))}
+            <div className="department-queue-list">
+              {!queueError && departmentQueue.map((item) => (
+                <article
+                  className={`status-card queue-request-card${queueRemovingId === item.id ? ' queue-request-card--removing' : ''}`}
+                  key={item.id}
+                >
+                  <div className="status-row">
+                    <strong>Request {item.id}</strong>
+                    <span className="status-badge">{item.status}</span>
+                  </div>
+                  <p className="submitted-description">{item.description}</p>
+                  <div className="queue-request-footer">
+                    <span className="queue-department-label">{getDepartmentLabel(item.departmentId)}</span>
+                    {item.status === 'Open' && (
+                      <button
+                        className="btn btn-primary queue-action-button"
+                        type="button"
+                        onClick={() => void processQueueRequest(item)}
+                        disabled={queueLoading || queueActionId !== null}
+                      >
+                        {queueActionId === item.id ? 'Taking ownership…' : 'Take ownership'}
+                      </button>
+                    )}
+                    {item.status === 'In Progress' && (
+                      <button
+                        className="btn btn-secondary queue-action-button"
+                        type="button"
+                        onClick={() => void processQueueRequest(item)}
+                        disabled={queueLoading || queueActionId !== null}
+                      >
+                        {queueActionId === item.id ? 'Resolving…' : 'Resolve request'}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
           </section>
         </main>
       );
@@ -197,6 +243,7 @@ function RequestApp() {
     }
 
     setError('');
+    setShowHistory(false);
     setShowAssistant(true);
     setTriageLoading(true);
     setTriageSuggestion(null);
@@ -221,6 +268,8 @@ function RequestApp() {
     try {
       const created = await createRequest(departmentId, description.trim());
       setRequest(created);
+      setOwnRequests((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      void refreshOwnRequests(true);
       setTriageSuggestion(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unexpected failure.');
@@ -231,7 +280,7 @@ function RequestApp() {
 
   return (
     <main className="app-shell">
-      <div className={`layout ${showAssistant ? 'layout-two-panel' : 'layout-one-panel'}`}>
+      <div className={`layout ${showAssistant ? 'layout-two-panel' : showHistory ? 'layout-history-panel' : 'layout-one-panel'}`}>
         <section className="panel form-panel">
           <div className="queue-heading employee-workspace-heading">
             <div>
@@ -241,6 +290,14 @@ function RequestApp() {
             <button type="button" className="btn btn-secondary" onClick={() => void logout()}>Sign out</button>
           </div>
 
+          <div className="employee-view-switch" role="tablist" aria-label="Employee workspace">
+            <button type="button" role="tab" aria-selected={!showHistory} className={!showHistory ? 'is-selected' : ''}
+              onClick={() => { setShowHistory(false); setShowAssistant(false); }}>New request</button>
+            <button type="button" role="tab" aria-selected={showHistory} className={showHistory ? 'is-selected' : ''}
+              onClick={() => { setShowHistory(true); setShowAssistant(false); void refreshOwnRequests(true); }}>My requests</button>
+          </div>
+
+          {!showHistory && <div className="employee-view-content employee-view-enter">
           <form onSubmit={submit} className="request-form">
             <div className="field-group">
               <label className="field-label">Department</label>
@@ -326,7 +383,57 @@ function RequestApp() {
               <p className="submitted-description">{request.description}</p>
             </section>
           )}
+          </div>}
 
+          {showHistory && (
+            <section className="employee-view-content employee-view-enter" aria-label="Your requests">
+              <div className="request-history-heading">
+              <div>
+                <h2>Your requests</h2>
+                <p>Check the current status of requests you submitted.</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary refresh-requests-button"
+                aria-label="Refresh requests"
+                onClick={() => void refreshOwnRequests()}
+                disabled={ownRequestsLoading}
+                aria-busy={ownRequestsLoading}
+              >
+                {ownRequestsLoading
+                  ? <><span className="queue-refresh-spinner" aria-hidden="true" />Refreshing…</>
+                  : 'Refresh'}
+              </button>
+            </div>
+            {ownRequestsLoading && <p className="request-history-message" role="status">Loading your requests…</p>}
+              {ownRequestsError && <div className="error-box" role="alert">{ownRequestsError}</div>}
+              {ownRequestsNotice && <div className="error-box" role="alert">{ownRequestsNotice}</div>}
+              <div className="request-history-list">
+                {!ownRequestsLoading && !ownRequestsError && !ownRequestsNotice && ownRequests.length === 0 && (
+                  <p className="request-history-empty">No requests yet. Submitted requests will appear here.</p>
+                )}
+                {!ownRequestsError && ownRequests.map((item) => {
+                  const statusClass = item.status.toLowerCase().replace(/\s+/g, '-');
+                  const submittedAt = formatSubmittedAt(item.createdAt);
+                  return (
+                    <article className="request-history-card" key={item.id}>
+                      <div className="request-history-card-heading">
+                        <strong>Request {item.id}</strong>
+                        <span className={`status-badge request-history-status request-history-status--${statusClass}`}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="request-history-description">{item.description}</p>
+                      <div className="request-history-meta">
+                        <span>{getDepartmentLabel(item.departmentId)}</span>
+                        {submittedAt && <time dateTime={item.createdAt}>{submittedAt}</time>}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </section>
 
         {showAssistant && (

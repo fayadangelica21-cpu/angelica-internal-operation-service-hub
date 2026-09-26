@@ -44,6 +44,23 @@ describe('RequestsService database integration', () => {
     expect(stored.description).toBe('Laptop screen flickers');
   });
 
+  it('returns only requests owned by the authenticated Employee', async () => {
+    const ownRequest = await service.create(
+      { id: 'EMP-OWN-LIST', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Request visible in my list' },
+    );
+    const anotherEmployeesRequest = await service.create(
+      { id: 'EMP-OTHER-LIST', role: 'Employee' },
+      { departmentId: 'DEPT-HR', description: 'Request must remain private' },
+    );
+
+    const ownRequests = await service.getOwnRequests({ id: 'EMP-OWN-LIST', role: 'Employee' });
+
+    expect(ownRequests.map((request) => request.id)).toContain(ownRequest.id);
+    expect(ownRequests.map((request) => request.id)).not.toContain(anotherEmployeesRequest.id);
+    expect(ownRequests.every((request) => request.requesterId === 'EMP-OWN-LIST')).toBe(true);
+  });
+
   it('queries the active queue using the authenticated Staff department', async () => {
     const itRequest = await service.create(
       { id: 'EMP-IT-QUEUE', role: 'Employee' },
