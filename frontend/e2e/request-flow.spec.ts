@@ -34,16 +34,32 @@ test.beforeEach(async ({ page }) => {
     staffQueue.splice(0, staffQueue.length);
     await route.fulfill({ json: resolved });
   });
+  const employeeRequests: {
+    id: string;
+    requesterId: string;
+    departmentId: string;
+    description: string;
+    status: string;
+    ownerId: null;
+    createdAt: string;
+  }[] = [];
   await page.route('**/requests', async (route) => {
     expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: employeeRequests });
+      return;
+    }
     const payload = route.request().postDataJSON() as { departmentId: string; description: string };
     const record = {
-      id: 'REQ-E2E-001',
+      id: `REQ-E2E-${employeeRequests.length + 1}`,
       requesterId: 'e2e-employee@example.test',
       departmentId: payload.departmentId,
       description: payload.description,
       status: 'Open',
+      ownerId: null,
+      createdAt: new Date().toISOString(),
     };
+    employeeRequests.unshift(record);
     await route.fulfill({
       status: 201,
       json: record,
@@ -70,6 +86,40 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await expect(page.getByRole('heading', { name: 'Request submitted' })).toBeVisible();
   await expect(page.getByLabel('Request status Open')).toBeVisible();
   await expect(page.getByLabel('Created request')).toContainText('Laptop screen flickers');
+  await expect(page.getByRole('tab', { name: 'New request' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('region', { name: 'Your requests' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'HR', exact: true }).click();
+  await page.getByLabel('Description').fill('Need help understanding my leave balance');
+  await page.getByRole('button', { name: 'Submit request' }).click();
+  await expect(page.getByRole('heading', { name: 'Request submitted' })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'My requests' }).click();
+  await expect(page.getByLabel('Description')).toHaveCount(0);
+  const requestHistory = page.getByRole('region', { name: 'Your requests' });
+  await expect(requestHistory).toBeVisible();
+  await expect(requestHistory.locator('.request-history-card')).toHaveCount(2);
+  await expect(requestHistory).toContainText('Need help understanding my leave balance');
+  await expect(requestHistory).toContainText('Laptop screen flickers');
+
+  await page.route('**/requests', async (route) => {
+    await route.fulfill({ json: [
+      {
+        id: 'REQ-E2E-2', requesterId: 'e2e-employee@example.test', departmentId: 'DEPT-HR',
+        description: 'Need help understanding my leave balance', status: 'In Progress', createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'REQ-E2E-1', requesterId: 'e2e-employee@example.test', departmentId: 'DEPT-IT',
+        description: 'Laptop screen flickers', status: 'Resolved', createdAt: new Date(Date.now() - 1000).toISOString(),
+      },
+    ] });
+  });
+  await page.getByRole('button', { name: 'Refresh requests' }).click();
+  await expect(requestHistory.locator('.request-history-card').nth(0)).toContainText('In Progress');
+  await expect(requestHistory.locator('.request-history-card').nth(1)).toContainText('Resolved');
+  await page.getByRole('tab', { name: 'New request' }).click();
+  await expect(page.getByLabel('Description')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Your requests' })).toHaveCount(0);
 });
 
 test('AI triage automatically selects the suggested department', async ({ page }) => {
