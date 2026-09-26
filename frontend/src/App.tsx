@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { createRequest, getTriageSuggestion, RequestRecord, TriageSuggestion } from './api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createRequest, getDepartmentQueue, getTriageSuggestion, RequestRecord, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -43,6 +43,25 @@ function RequestApp() {
   const [loading, setLoading] = useState(false);
   const [triageLoading, setTriageLoading] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
+  const [departmentQueue, setDepartmentQueue] = useState<RequestRecord[]>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState('');
+
+  async function refreshDepartmentQueue() {
+    setQueueLoading(true);
+    setQueueError('');
+    try {
+      setDepartmentQueue(await getDepartmentQueue());
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : 'Unable to load the department queue.');
+    } finally {
+      setQueueLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (user?.role === 'Staff') void refreshDepartmentQueue();
+  }, [user?.id, user?.role]);
 
   const requestReady = description.trim().length > 0;
   const helperText = useMemo(() => {
@@ -57,6 +76,44 @@ function RequestApp() {
   }
   if (!user) return <AuthScreen />;
   if (user.role !== 'Employee') {
+    if (user.role === 'Staff') {
+      return (
+        <main className="app-shell auth-shell">
+          <section className="panel department-queue-panel" aria-label="Department request queue">
+            <div className="queue-heading">
+              <div>
+                <p className="eyebrow">Staff workspace</p>
+                <h1>{getDepartmentLabel(user.departmentId ?? null)} request queue</h1>
+              </div>
+              <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
+            </div>
+            <div className="queue-toolbar">
+              <p className="auth-intro">Active requests assigned to your department.</p>
+              <button className="btn btn-secondary" type="button" onClick={() => void refreshDepartmentQueue()} disabled={queueLoading}>
+                {queueLoading ? 'Refreshing…' : 'Refresh queue'}
+              </button>
+            </div>
+            {queueLoading && <p role="status">Loading department requests…</p>}
+            {queueError && <div className="error-box" role="alert">{queueError}</div>}
+            {!queueLoading && !queueError && departmentQueue.length === 0 && (
+              <p className="queue-empty">No active requests in your department.</p>
+            )}
+            {!queueLoading && !queueError && departmentQueue.map((item) => (
+              <article className="status-card queue-request-card" key={item.id}>
+                <div className="status-row">
+                  <strong>Request {item.id}</strong>
+                  <span className="status-badge">{item.status}</span>
+                </div>
+                <div className="meta-grid">
+                  <div><span className="meta-label">Department</span><strong>{getDepartmentLabel(item.departmentId)}</strong></div>
+                </div>
+                <p className="submitted-description">{item.description}</p>
+              </article>
+            ))}
+          </section>
+        </main>
+      );
+    }
     return (
       <main className="app-shell auth-shell">
         <section className="panel auth-panel" aria-label="Role access">
