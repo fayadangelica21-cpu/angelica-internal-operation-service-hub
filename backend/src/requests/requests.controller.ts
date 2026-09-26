@@ -17,6 +17,11 @@ export class RequestsController {
     return this.requestsService.create(user, dto);
   }
 
+  @Get('queue')
+  getDepartmentQueue(@CurrentUser() user: CurrentUserData) {
+    return this.requestsService.getDepartmentQueue(user);
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
     return this.requestsService.findOne(user, id);

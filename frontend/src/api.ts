@@ -47,6 +47,23 @@ export async function createRequest(departmentId: string, description: string): 
   return body as RequestRecord;
 }
 
+export async function getDepartmentQueue(): Promise<RequestRecord[]> {
+  let response: Response;
+  try {
+    const token = await getAuthToken();
+    response = await fetch(`${API_URL}/requests/queue`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+  }
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(readErrorMessage(body));
+  if (!Array.isArray(body)) throw new Error('The department queue response was invalid.');
+  return body as RequestRecord[];
+}
+
 export async function getTriageSuggestion(
   description: string,
   selectedDepartmentId?: string | null,

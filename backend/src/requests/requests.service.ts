@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CurrentUserData } from './current-user';
 import { AssignRequestDto } from './dto/assign-request.dto';
 import { CreateRequestDto } from './dto/create-request.dto';
@@ -37,6 +37,22 @@ export class RequestsService {
     if (!request) throw new NotFoundException(`Request with ID ${id} not found.`);
     this.assertCanAccess(user, request);
     return request;
+  }
+
+  async getDepartmentQueue(user: CurrentUserData): Promise<RequestEntity[]> {
+    if (user.role !== 'Staff') {
+      throw new ForbiddenException('Only department staff can view the department queue.');
+    }
+    if (!user.departmentId) {
+      throw new ForbiddenException('Staff account has no assigned department.');
+    }
+    return this.requestsRepository.find({
+      where: {
+        departmentId: user.departmentId,
+        status: In([RequestStatus.OPEN, RequestStatus.IN_PROGRESS]),
+      },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async assign(user: CurrentUserData, id: string, dto: AssignRequestDto): Promise<RequestEntity> {

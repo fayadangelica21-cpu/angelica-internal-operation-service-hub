@@ -1,9 +1,7 @@
 # Data Model: Internal Operations Service Hub
 
-> **Current implementation note:** Firebase UID is the local SQLite user key. The backend persists email, display name, server-assigned role, and staff department in `users`; Firebase alone stores authentication credentials. The conceptual model below remains the product-level target.
+> **Firebase implementation note:** Firebase UID is the local SQLite user key. The backend persists email, display name, server-assigned role, and staff department in `users`; Firebase alone stores authentication credentials. The conceptual model below remains the product-level target.
 
-> **Status:** v0.1 — conceptual/logical data model, not a physical database schema.
->
 > **Inputs:** `product-spec.md` + `architecture.md`.
 >
 > **Purpose:** define what the system must remember, how the durable information connects, which lifecycle and authorization rules the model must support, and how real product access patterns will find that information.
@@ -352,8 +350,8 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 | Status | Requirement(s) | Rationale |
 |---|---|---|
-| Implemented | FR1, FR2 | Proven end-to-end in the current project slice: employee request submission and AI triage are implemented and validated across the frontend/backend flow. |
-| Partial | FR3, FR4, FR12 | Some data-model and backend support exists, but the full end-to-end user story is not yet fully proven and validated in the project scope. |
+| Implemented | FR1, FR2, FR4 | FR1 and FR2 are proven across their frontend/backend flows. FR4 is implemented end-to-end for queue viewing: Staff see active requests from their assigned department; backend HTTP and SQLite integration tests verify department isolation and resolved-request exclusion, and Playwright verifies the Staff queue view. |
+| Partial | FR3, FR12 | Some data-model and backend support exists, but the full end-to-end user story is not yet fully proven and validated in the project scope. |
 | Not implemented | FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR13, FR14 | These requirements are either not yet built, not fully validated end-to-end, or explicitly out of the current implemented slice. |
 
 ### 9.2 Requirement-to-model mapping
