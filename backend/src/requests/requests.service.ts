@@ -1,6 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { CurrentUserData } from './current-user';
 import { AssignRequestDto } from './dto/assign-request.dto';
 import { CreateRequestDto } from './dto/create-request.dto';
@@ -51,7 +51,7 @@ export class RequestsService {
         departmentId: user.departmentId,
         status: In([RequestStatus.OPEN, RequestStatus.IN_PROGRESS]),
       },
-      order: { createdAt: 'DESC' },
+      order: { updatedAt: 'DESC', createdAt: 'DESC' },
     });
   }
 
@@ -71,9 +71,20 @@ export class RequestsService {
     }
 
     this.stateMachineService.validateTransition(request.status, RequestStatus.IN_PROGRESS);
-    request.ownerId = dto.ownerId;
-    request.status = RequestStatus.IN_PROGRESS;
-    return this.requestsRepository.save(request);
+    const claimedAt = new Date(Math.max(Date.now(), request.updatedAt.getTime() + 1));
+    const result = await this.requestsRepository.update(
+      {
+        id,
+        departmentId: user.departmentId,
+        status: RequestStatus.OPEN,
+        ownerId: IsNull(),
+      },
+      { ownerId: user.id, status: RequestStatus.IN_PROGRESS, updatedAt: claimedAt },
+    );
+    if (result.affected !== 1) {
+      throw new ConflictException('This request was already taken or changed. Refresh the department queue.');
+    }
+    return this.requestsRepository.findOneByOrFail({ id });
   }
 
   async transitionStatus(user: CurrentUserData, id: string, dto: UpdateStatusDto): Promise<RequestEntity> {
@@ -91,8 +102,18 @@ export class RequestsService {
     }
 
     this.stateMachineService.validateTransition(request.status, dto.targetStatus);
-    request.status = dto.targetStatus;
-    return this.requestsRepository.save(request);
+    const result = await this.requestsRepository.update(
+      {
+        id,
+        departmentId: user.departmentId,
+        status: RequestStatus.IN_PROGRESS,
+      },
+      { status: RequestStatus.RESOLVED },
+    );
+    if (result.affected !== 1) {
+      throw new ConflictException('This request was changed by another staff member. Refresh the department queue.');
+    }
+    return this.requestsRepository.findOneByOrFail({ id });
   }
 
   private assertCanAccess(user: CurrentUserData, request: RequestEntity): void {
