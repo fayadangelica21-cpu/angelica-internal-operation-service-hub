@@ -107,6 +107,125 @@ describe('Requests HTTP boundaries', () => {
       .expect(403);
   });
 
+  it('validates take-ownership payloads and limits ownership to the signed-in Staff member', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-TAKE-OWNER'))
+      .send({ departmentId: 'DEPT-IT', description: 'Request for ownership validation' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .send({ ownerId: '   ' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .send({ ownerId: 'STAFF-IT-B' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-HR-A', 'DEPT-HR'))
+      .send({ ownerId: 'STAFF-HR-A' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(employeeHeaders('EMP-TAKE-OWNER'))
+      .send({ ownerId: 'EMP-TAKE-OWNER' })
+      .expect(403);
+
+    const claimed = await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .send({ ownerId: 'STAFF-IT-A' })
+      .expect(200);
+
+    expect(claimed.body).toMatchObject({ ownerId: 'STAFF-IT-A', status: 'In Progress' });
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-B', 'DEPT-IT'))
+      .send({ ownerId: 'STAFF-IT-B' })
+      .expect(400);
+    const stillClaimed = await request(app.getHttpServer())
+      .get(`/requests/${created.body.id}`)
+      .set(staffHeaders('STAFF-IT-B', 'DEPT-IT'))
+      .expect(200);
+    expect(stillClaimed.body.ownerId).toBe('STAFF-IT-A');
+  });
+
+  it('requires the valid lifecycle step before Staff can resolve a request', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-RESOLVE-VALIDATION'))
+      .send({ departmentId: 'DEPT-IT', description: 'Request for resolution validation' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/status`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .send({ targetStatus: 'Finished' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/status`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .send({ targetStatus: 'Resolved' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .send({ ownerId: 'STAFF-IT-A' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/status`)
+      .set(employeeHeaders('EMP-RESOLVE-VALIDATION'))
+      .send({ targetStatus: 'Resolved' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/status`)
+      .set(staffHeaders('STAFF-HR-A', 'DEPT-HR'))
+      .send({ targetStatus: 'Resolved' })
+      .expect(403);
+
+    const resolved = await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/status`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .send({ targetStatus: 'Resolved' })
+      .expect(200);
+    expect(resolved.body.status).toBe('Resolved');
+  });
+
+  it('allows only one of two simultaneous Staff claims to become the request owner', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-CONCURRENT-CLAIM'))
+      .send({ departmentId: 'DEPT-IT', description: 'Request for concurrent claim test' })
+      .expect(201);
+
+    const results = await Promise.all([
+      request(app.getHttpServer())
+        .patch(`/requests/${created.body.id}/assign`)
+        .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+        .send({ ownerId: 'STAFF-IT-A' }),
+      request(app.getHttpServer())
+        .patch(`/requests/${created.body.id}/assign`)
+        .set(staffHeaders('STAFF-IT-B', 'DEPT-IT'))
+        .send({ ownerId: 'STAFF-IT-B' }),
+    ]);
+    const winners = results.filter((result) => result.status === 200);
+    expect(winners).toHaveLength(1);
+    expect([200, 400, 409]).toContain(results[0].status);
+    expect([200, 400, 409]).toContain(results[1].status);
+
+    const stored = await request(app.getHttpServer())
+      .get(`/requests/${created.body.id}`)
+      .set(staffHeaders('STAFF-IT-A', 'DEPT-IT'))
+      .expect(200);
+    expect(stored.body.ownerId).toBe(winners[0].body.ownerId);
+    expect(stored.body.status).toBe('In Progress');
+  });
+
   it('returns only active requests from the authenticated Staff member’s own department', async () => {
     const itRequest = await request(app.getHttpServer())
       .post('/requests')
