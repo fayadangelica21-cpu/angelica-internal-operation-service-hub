@@ -1,9 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, CurrentUserData } from '../requests/current-user';
 import { TriageAiResponseDto, TriageRequestDto } from './triage.dto';
 import { TriageService } from './triage.service';
+import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
 @Controller()
+@UseGuards(FirebaseAuthGuard)
 export class TriageController {
   constructor(private readonly triageService: TriageService) {}
 
