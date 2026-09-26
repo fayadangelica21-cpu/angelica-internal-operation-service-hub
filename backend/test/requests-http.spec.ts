@@ -1,9 +1,19 @@
+jest.mock('firebase-admin/app', () => ({
+  applicationDefault: jest.fn(() => ({})),
+  getApp: jest.fn(() => ({})),
+  getApps: jest.fn(() => []),
+  initializeApp: jest.fn(() => ({})),
+}));
+jest.mock('firebase-admin/auth', () => ({ getAuth: jest.fn() }));
+
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import request from 'supertest';
 import { RequestsModule } from '../src/requests/requests.module';
 import { RequestEntity } from '../src/requests/entities/request.entity';
+import { UserEntity } from '../src/auth/user.entity';
+import { FirebaseAuthService } from '../src/auth/firebase-auth.service';
 
 describe('Requests HTTP boundaries', () => {
   let app: INestApplication;
@@ -14,12 +24,23 @@ describe('Requests HTTP boundaries', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [RequestEntity],
+          entities: [RequestEntity, UserEntity],
           synchronize: true,
         }),
         RequestsModule,
       ],
-    }).compile();
+    })
+      .overrideProvider(FirebaseAuthService)
+      .useValue({
+        authenticateToken: async (token: string) => {
+          const [prefix, id, role = 'Employee', departmentId] = token.split(':');
+          if (prefix !== 'test' || !id || !['Employee', 'Staff', 'Admin'].includes(role)) {
+            throw new Error('Invalid test token');
+          }
+          return { id, role, departmentId: departmentId || undefined };
+        },
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(
@@ -32,10 +53,7 @@ describe('Requests HTTP boundaries', () => {
     await app.close();
   });
 
-  const employeeHeaders = (id: string) => ({
-    'x-user-id': id,
-    'x-user-role': 'Employee',
-  });
+  const employeeHeaders = (id: string) => ({ Authorization: `Bearer test:${id}:Employee` });
 
   it('rejects a create payload with no description', async () => {
     await request(app.getHttpServer())
@@ -64,6 +82,8 @@ describe('Requests HTTP boundaries', () => {
     const response = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-001'))
+      .set('x-user-id', 'EMP-SPOOFED')
+      .set('x-user-role', 'Admin')
       .send({ departmentId: 'DEPT-IT', description: 'Laptop screen flickers' })
       .expect(201);
 
@@ -84,11 +104,24 @@ describe('Requests HTTP boundaries', () => {
       .expect(403);
   });
 
-  it('rejects calls without identity headers', async () => {
+  it('rejects calls without a verified bearer token even if identity headers are spoofed', async () => {
     await request(app.getHttpServer())
       .post('/requests')
+      .set('x-user-id', 'EMP-001')
+      .set('x-user-role', 'Employee')
       .send({ departmentId: 'DEPT-IT', description: 'Need a mouse' })
-      .expect(403);
+      .expect(401);
+  });
+
+  it('returns the identity derived from the verified token', async () => {
+    await request(app.getHttpServer())
+      .get('/auth/me')
+      .set(employeeHeaders('FIREBASE-UID-123'))
+      .set('x-user-id', 'SPOOFED')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ id: 'FIREBASE-UID-123', role: 'Employee' });
+      });
   });
 
   it('returns the backend-owned triage contract for a valid employee request', async () => {
