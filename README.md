@@ -21,9 +21,11 @@ Open → In Progress → Resolved
 - AI assistant UI for department suggestions, confidence scoring, and suggested next steps
 - NestJS API with an explicit contract
 - SQLite persistence through TypeORM
+- Firebase-authenticated Staff can view active requests in their assigned department; the backend derives the department from the verified identity
 - Backend-controlled AI triage step via `POST /triage` with a strict fixed JSON response contract
 - AI payload is bounded to only the information needed for triage; the backend validates the response before showing it
 - Authorization: an employee can create a request as themselves; another employee cannot read it (`403`)
+- Department queue authorization tests ensure Staff cannot see other departments' requests and resolved requests are excluded
 - Invalid input rejected on purpose (`400`)
 - Missing request handled on purpose (`404`)
 - Automated business-rule, integration, and E2E tests
@@ -91,19 +93,7 @@ npm run dev
 
 UI: `http://localhost:5173`
 
-The frontend uses the Firebase web-app settings in `frontend/.env.example`; those public client settings also have defaults in the client. Enable Email/Password in Firebase Authentication before testing signup and login.
-
-Optional frontend env (`frontend/.env.example`):
-
-```text
-VITE_API_URL=
-VITE_FIREBASE_API_KEY=your-firebase-web-api-key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-VITE_FIREBASE_APP_ID=your-web-app-id
-```
+The Firebase web-app settings have defaults in `frontend/src/auth.tsx`, so no frontend environment file is required for this project configuration. The Vite development server proxies API calls to `http://localhost:3001`. Enable Email/Password in Firebase Authentication before testing signup and login.
 
 Employees can create accounts from the app. Create Staff/Admin accounts in Firebase, copy each account's UID, then add its UID, role, and (for Staff) department to backend `FIREBASE_ROLE_ASSIGNMENTS`. The app shows the request form only to Employees; Staff/Admin sign in but see an access page until their role-specific feature is built.
 
@@ -203,7 +193,7 @@ Contract rules enforced by the backend:
 - low-confidence clear outputs are downgraded to `ambiguous` with a follow-up prompt
 - provider timeouts and provider-level failures are mapped to `503` semantics, while malformed provider outputs or invalid JSON are treated as `502`
 
-The AI recommendation is advisory in the UI. The frontend shows it to the user, but it does not silently overwrite the employee's currently selected department; the user must choose the suggestion explicitly if they want to apply it.
+The AI recommendation is advisory: after the backend returns a validated suggestion with a department, the frontend selects that department automatically. The employee can still change the department before submitting; the suggestion does not create or modify a request by itself.
 
 ### Create a request
 
@@ -234,6 +224,15 @@ Success (`201`):
 ```
 
 `departmentId` must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`. Description is required (whitespace-only is rejected).
+
+### View the department queue
+
+```http
+GET /requests/queue
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+```
+
+This endpoint is for authenticated Staff accounts. The backend derives the department from the verified account and returns only that department's active `Open` and `In Progress` requests, newest first. The client cannot select or override the department. Employees, Admins, and Staff accounts without an assigned department receive `403 Forbidden`.
 
 ### Read a request
 
@@ -359,7 +358,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, and request submission. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, Staff access to the department queue, and request submission. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
@@ -450,7 +449,6 @@ project/
 │       ├── requests-db.integration.spec.ts
 │       └── requests-http.spec.ts
 └── frontend/
-    ├── .env.example
     ├── .gitignore
     ├── index.html
     ├── package.json
