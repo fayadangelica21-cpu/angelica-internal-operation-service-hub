@@ -1,6 +1,6 @@
 # Architecture: Internal Operations Service Hub
 
-**Current project implementation:** the prototype uses Firebase Authentication email/password for sign-up and sign-in. The frontend sends Firebase ID tokens to the API; the backend verifies them with Firebase Admin. The backend assigns roles and staff departments from the server-side Firebase UID mapping and upserts the verified profile in local SQLite. No password is stored in SQLite. This is the prototype identity implementation; company SSO/directory integration remains out of scope.
+**Firebase project implementation:** the prototype uses Firebase Authentication email/password for sign-up and sign-in. The frontend sends Firebase ID tokens to the API; the backend verifies them with Firebase Admin. The backend assigns roles and staff departments from the server-side Firebase UID mapping and upserts the verified profile in local SQLite. No password is stored in SQLite. This is the prototype identity implementation; company SSO/directory integration remains out of scope.
 
 Architecture reasoning only — this document is a design draft, not an implementation.
 Input: `product-spec.md`. Every decision below traces back to a Functional Requirement (FR),
