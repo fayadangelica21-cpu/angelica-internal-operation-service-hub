@@ -39,6 +39,16 @@ export class RequestsService {
     return request;
   }
 
+  async getOwnRequests(user: CurrentUserData): Promise<RequestEntity[]> {
+    if (user.role !== 'Employee') {
+      throw new ForbiddenException('Only employees can view their own requests.');
+    }
+    return this.requestsRepository.find({
+      where: { requesterId: user.id },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async getDepartmentQueue(user: CurrentUserData): Promise<RequestEntity[]> {
     if (user.role !== 'Staff') {
       throw new ForbiddenException('Only department staff can view the department queue.');
