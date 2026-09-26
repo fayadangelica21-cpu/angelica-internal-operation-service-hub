@@ -121,6 +121,7 @@ textarea {
 .signed-in-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -191,12 +192,86 @@ button {
   font-size: clamp(1.8rem, 4vw, 2.5rem);
 }
 
+.employee-workspace-heading h1 {
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
+}
+
+.employee-workspace-heading > .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .queue-toolbar {
   margin-top: 12px;
 }
 
+.refresh-queue-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.queue-refresh-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: queue-refresh-spin 700ms linear infinite;
+}
+
+@keyframes queue-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
 .queue-request-card {
-  margin-top: 16px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+
+.queue-request-card .status-badge {
+  min-height: 24px;
+  padding: 4px 9px;
+  font-size: 0.7rem;
+}
+
+.queue-request-card .submitted-description {
+  margin: 8px 0 10px;
+  line-height: 1.45;
+}
+
+.queue-request-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.queue-department-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.queue-request-card--removing {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-request-card {
+    transition: none;
+  }
+}
+
+.queue-action-button {
+  margin-top: 0;
+  padding: 9px 13px;
+  border-radius: 10px;
+  font-size: 0.86rem;
 }
 
 .queue-empty {

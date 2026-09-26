@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createRequest, getDepartmentQueue, getTriageSuggestion, RequestRecord, TriageSuggestion } from './api';
+import { createRequest, getDepartmentQueue, getTriageSuggestion, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -46,16 +46,49 @@ function RequestApp() {
   const [departmentQueue, setDepartmentQueue] = useState<RequestRecord[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState('');
+  const [queueNotice, setQueueNotice] = useState('');
+  const [queueActionId, setQueueActionId] = useState<string | null>(null);
+  const [queueRemovingId, setQueueRemovingId] = useState<string | null>(null);
 
-  async function refreshDepartmentQueue() {
-    setQueueLoading(true);
+  async function refreshDepartmentQueue(silent = false) {
+    if (!silent) setQueueLoading(true);
     setQueueError('');
+    setQueueNotice('');
     try {
       setDepartmentQueue(await getDepartmentQueue());
     } catch (err) {
-      setQueueError(err instanceof Error ? err.message : 'Unable to load the department queue.');
+      if (silent || departmentQueue.length > 0) {
+        setQueueNotice('The queue could not be refreshed. The displayed requests are unchanged; please try again.');
+      } else {
+        setQueueError(err instanceof Error ? err.message : 'Unable to load the department queue.');
+      }
     } finally {
-      setQueueLoading(false);
+      if (!silent) setQueueLoading(false);
+    }
+  }
+
+  async function processQueueRequest(item: RequestRecord) {
+    if (!user || user.role !== 'Staff') return;
+    setQueueActionId(item.id);
+    setQueueError('');
+    try {
+      if (item.status === 'Open') {
+        const claimed = await takeOwnership(item.id, user.id);
+        setDepartmentQueue((current) => [claimed, ...current.filter((request) => request.id !== item.id)]);
+      } else if (item.status === 'In Progress') {
+        await resolveRequest(item.id);
+        setQueueRemovingId(item.id);
+        await new Promise((resolve) => window.setTimeout(resolve, 450));
+        setDepartmentQueue((current) => current.filter((request) => request.id !== item.id));
+      } else {
+        return;
+      }
+      await refreshDepartmentQueue(true);
+    } catch (err) {
+      setQueueNotice(err instanceof Error ? err.message : 'Unable to update this request.');
+    } finally {
+      setQueueActionId(null);
+      setQueueRemovingId(null);
     }
   }
 
@@ -89,25 +122,55 @@ function RequestApp() {
             </div>
             <div className="queue-toolbar">
               <p className="auth-intro">Active requests assigned to your department.</p>
-              <button className="btn btn-secondary" type="button" onClick={() => void refreshDepartmentQueue()} disabled={queueLoading}>
-                {queueLoading ? 'Refreshing…' : 'Refresh queue'}
+              <button
+                className="btn btn-secondary refresh-queue-button"
+                type="button"
+                onClick={() => void refreshDepartmentQueue()}
+                disabled={queueLoading || queueActionId !== null}
+                aria-busy={queueLoading}
+              >
+                {queueLoading ? <><span className="queue-refresh-spinner" aria-hidden="true" />Refreshing queue…</> : 'Refresh queue'}
               </button>
             </div>
-            {queueLoading && <p role="status">Loading department requests…</p>}
+            {queueLoading && departmentQueue.length === 0 && <p role="status">Loading department requests…</p>}
             {queueError && <div className="error-box" role="alert">{queueError}</div>}
-            {!queueLoading && !queueError && departmentQueue.length === 0 && (
+            {queueNotice && <div className="error-box" role="alert">{queueNotice}</div>}
+            {!queueLoading && !queueError && !queueNotice && departmentQueue.length === 0 && (
               <p className="queue-empty">No active requests in your department.</p>
             )}
-            {!queueLoading && !queueError && departmentQueue.map((item) => (
-              <article className="status-card queue-request-card" key={item.id}>
+            {!queueError && departmentQueue.map((item) => (
+              <article
+                className={`status-card queue-request-card${queueRemovingId === item.id ? ' queue-request-card--removing' : ''}`}
+                key={item.id}
+              >
                 <div className="status-row">
                   <strong>Request {item.id}</strong>
                   <span className="status-badge">{item.status}</span>
                 </div>
-                <div className="meta-grid">
-                  <div><span className="meta-label">Department</span><strong>{getDepartmentLabel(item.departmentId)}</strong></div>
-                </div>
                 <p className="submitted-description">{item.description}</p>
+                <div className="queue-request-footer">
+                  <span className="queue-department-label">{getDepartmentLabel(item.departmentId)}</span>
+                  {item.status === 'Open' && (
+                    <button
+                      className="btn btn-primary queue-action-button"
+                      type="button"
+                      onClick={() => void processQueueRequest(item)}
+                      disabled={queueLoading || queueActionId !== null}
+                    >
+                      {queueActionId === item.id ? 'Taking ownership…' : 'Take ownership'}
+                    </button>
+                  )}
+                  {item.status === 'In Progress' && (
+                    <button
+                      className="btn btn-secondary queue-action-button"
+                      type="button"
+                      onClick={() => void processQueueRequest(item)}
+                      disabled={queueLoading || queueActionId !== null}
+                    >
+                      {queueActionId === item.id ? 'Resolving…' : 'Resolve request'}
+                    </button>
+                  )}
+                </div>
               </article>
             ))}
           </section>
@@ -170,12 +233,12 @@ function RequestApp() {
     <main className="app-shell">
       <div className={`layout ${showAssistant ? 'layout-two-panel' : 'layout-one-panel'}`}>
         <section className="panel form-panel">
-          <div className="panel-header">
-            <p className="eyebrow">Request intake</p>
-            <h1>Internal Operations Service Hub</h1>
-            <div className="signed-in-row">
-              <button type="button" className="text-button" onClick={() => void logout()}>Sign out</button>
+          <div className="queue-heading employee-workspace-heading">
+            <div>
+              <p className="eyebrow">Request intake</p>
+              <h1>Internal Operations Service Hub</h1>
             </div>
+            <button type="button" className="btn btn-secondary" onClick={() => void logout()}>Sign out</button>
           </div>
 
           <form onSubmit={submit} className="request-form">

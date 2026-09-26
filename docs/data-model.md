@@ -350,9 +350,9 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 | Status | Requirement(s) | Rationale |
 |---|---|---|
-| Implemented | FR1, FR2, FR4 | FR1 and FR2 are proven across their frontend/backend flows. FR4 is implemented end-to-end for queue viewing: Staff see active requests from their assigned department; backend HTTP and SQLite integration tests verify department isolation and resolved-request exclusion, and Playwright verifies the Staff queue view. |
-| Partial | FR3, FR12 | Some data-model and backend support exists, but the full end-to-end user story is not yet fully proven and validated in the project scope. |
-| Not implemented | FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR13, FR14 | These requirements are either not yet built, not fully validated end-to-end, or explicitly out of the current implemented slice. |
+| Implemented | FR1, FR2, FR4, FR5 | FR1 and FR2 are proven across their frontend/backend flows. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`); backend HTTP, SQLite integration, and Playwright tests cover the processing flow and authorization boundaries. |
+| Partial | FR3, FR6, FR12 | Employee request history and Admin cross-department view are not implemented end-to-end. Staff self-ownership is implemented under FR6, but Admin assignment/reassignment is not. |
+| Not implemented | FR7, FR8, FR9, FR10, FR11, FR13, FR14 | These requirements are either not yet built, not fully validated end-to-end, or explicitly out of the current implemented slice. |
 
 ### 9.2 Requirement-to-model mapping
 

@@ -246,10 +246,13 @@ GET /requests/:id
 | `403` | Request exists, but this caller may not access it |
 | `404` | No request with that ID |
 
-### Assign and resolve (Week 2 lifecycle, still enforced)
+### Process a request (Staff)
 
-- `PATCH /requests/:id/assign` with `{ "ownerId": "<staff-id>" }` — Staff in that department take ownership. Status becomes `In Progress`.
-- `PATCH /requests/:id/status` with `{ "targetStatus": "Resolved" }` — Staff resolve an in-progress request. Starting work through this endpoint is rejected; use assign.
+- Take an `Open` request: `PATCH /requests/:id/assign` with `{ "ownerId": "<your Firebase UID>" }`. The backend verifies the owner matches the authenticated Staff user, then changes the request to `In Progress`.
+- Resolve an `In Progress` request: `PATCH /requests/:id/status` with `{ "targetStatus": "Resolved" }`. The request leaves the active department queue.
+
+Both actions require Staff authorization for the request's department. Invalid lifecycle transitions are rejected, and a competing claim cannot replace an existing owner; refresh the queue if another Staff member takes the request first.
+After a successful claim, the request moves to the top of the department queue.
 
 ---
 
@@ -344,8 +347,8 @@ npm run test:all
 
 | Command | What it proves |
 |---|---|
-| `npm run test:unit` | Lifecycle allowed: `Open → In Progress → Resolved`. Regression: `Open → Resolved` rejected. `Resolved` is terminal. |
-| `npm run test:integration` | SQLite persistence plus HTTP `400` / `403` / `404` boundaries |
+| `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
+| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Staff claim and resolve actions. |
 | `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
 | `npm run test:all` | All backend tests |
 
@@ -358,7 +361,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, Staff access to the department queue, and request submission. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission, and Staff processing a request from `Open` through `In Progress` to `Resolved`, including the short fade-and-slide as a resolved request leaves the queue while other queue cards stay visible. It also verifies that a claimed request moves to the top, and that a competing claim is reported so Staff can refresh the queue and see the updated state. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
