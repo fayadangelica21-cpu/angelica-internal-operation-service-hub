@@ -66,4 +66,46 @@ describe('RequestsService database integration', () => {
     expect(queue.every((request) => request.departmentId === 'DEPT-IT')).toBe(true);
     expect(queue.every((request) => request.status !== RequestStatus.RESOLVED)).toBe(true);
   });
+
+  it('persists ownership and the status transitions from Open to In Progress to Resolved', async () => {
+    const created = await service.create(
+      { id: 'EMP-LIFECYCLE', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Persist staff processing lifecycle' },
+    );
+    const staff = { id: 'STAFF-IT-LIFECYCLE', role: 'Staff' as const, departmentId: 'DEPT-IT' };
+
+    const assigned = await service.assign(staff, created.id, { ownerId: staff.id });
+    expect(assigned).toMatchObject({ ownerId: staff.id, status: RequestStatus.IN_PROGRESS });
+
+    const storedInProgress = await repository.findOneByOrFail({ id: created.id });
+    expect(storedInProgress.ownerId).toBe(staff.id);
+    expect(storedInProgress.status).toBe(RequestStatus.IN_PROGRESS);
+
+    const resolved = await service.transitionStatus(staff, created.id, {
+      targetStatus: RequestStatus.RESOLVED,
+    });
+    const storedResolved = await repository.findOneByOrFail({ id: created.id });
+    expect(resolved.status).toBe(RequestStatus.RESOLVED);
+    expect(storedResolved.status).toBe(RequestStatus.RESOLVED);
+  });
+
+  it('moves a newly claimed request above newer unclaimed requests in the department queue', async () => {
+    const claimedRequest = await service.create(
+      { id: 'EMP-OLDER-REQUEST', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Older request that Staff will claim' },
+    );
+    const oldDate = new Date('2000-01-01T00:00:00.000Z');
+    await repository.update(claimedRequest.id, { createdAt: oldDate, updatedAt: oldDate });
+
+    const newerRequest = await service.create(
+      { id: 'EMP-NEWER-REQUEST', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Newer request that remains open' },
+    );
+    const staff = { id: 'STAFF-IT-QUEUE-ORDER', role: 'Staff' as const, departmentId: 'DEPT-IT' };
+    await service.assign(staff, claimedRequest.id, { ownerId: staff.id });
+
+    const queue = await service.getDepartmentQueue(staff);
+    expect(queue[0].id).toBe(claimedRequest.id);
+    expect(queue.map((request) => request.id)).toContain(newerRequest.id);
+  });
 });
