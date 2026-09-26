@@ -7,15 +7,32 @@ test.beforeEach(async ({ page }) => {
     const isAdmin = token.includes('admin');
     await route.fulfill({ json: { id: token, role: isAdmin ? 'Admin' : isStaff ? 'Staff' : 'Employee', ...(isStaff ? { departmentId: 'DEPT-IT' } : {}) } });
   });
+  const staffQueue = [{
+    id: 'REQ-IT-QUEUE-001',
+    requesterId: 'employee-private-id',
+    departmentId: 'DEPT-IT',
+    description: 'IT request visible to the IT team',
+    status: 'Open',
+    ownerId: null as string | null,
+  }];
   await page.route('**/requests/queue', async (route) => {
     expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
-    await route.fulfill({ json: [{
-      id: 'REQ-IT-QUEUE-001',
-      requesterId: 'employee-private-id',
-      departmentId: 'DEPT-IT',
-      description: 'IT request visible to the IT team',
-      status: 'Open',
-    }] });
+    await route.fulfill({ json: staffQueue });
+  });
+  await page.route('**/requests/REQ-IT-QUEUE-001/assign', async (route) => {
+    expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
+    const { ownerId } = route.request().postDataJSON() as { ownerId: string };
+    expect(ownerId).toBe('e2e-it.staff@example.test');
+    staffQueue[0].ownerId = ownerId;
+    staffQueue[0].status = 'In Progress';
+    await route.fulfill({ json: staffQueue[0] });
+  });
+  await page.route('**/requests/REQ-IT-QUEUE-001/status', async (route) => {
+    expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
+    expect(route.request().postDataJSON()).toEqual({ targetStatus: 'Resolved' });
+    const resolved = { ...staffQueue[0], status: 'Resolved' };
+    staffQueue.splice(0, staffQueue.length);
+    await route.fulfill({ json: resolved });
   });
   await page.route('**/requests', async (route) => {
     expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
@@ -39,7 +56,13 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await page.getByLabel('Email').fill('employee@example.test');
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  const signOutButton = page.getByRole('button', { name: 'Sign out' });
+  await expect(signOutButton).toBeVisible();
+  const signOutOffsetFromPanelCenter = await signOutButton.evaluate((button) => {
+    const panel = button.closest('.form-panel')!.getBoundingClientRect();
+    return button.getBoundingClientRect().left - panel.left - panel.width / 2;
+  });
+  expect(signOutOffsetFromPanelCenter).toBeGreaterThan(0);
   await expect(page.getByText('e2e-employee@example.test', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'IT', exact: true }).click();
   await page.getByLabel('Description').fill('Laptop screen flickers');
@@ -109,15 +132,131 @@ test('login and employee signup require valid email and password fields', async 
   await expect(page.getByRole('alert')).toHaveText('Enter a name with at least 2 non-space characters.');
 });
 
-test('Staff can view their department queue without seeing employee submission controls', async ({ page }) => {
+test('Staff can take ownership of a request and resolve it from their department queue', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const staffQueue = [
+    {
+      id: 'REQ-IT-QUEUE-001',
+      requesterId: 'employee-private-id',
+      departmentId: 'DEPT-IT',
+      description: 'IT request visible to the IT team',
+      status: 'Open',
+      ownerId: null as string | null,
+    },
+    {
+      id: 'REQ-IT-QUEUE-002',
+      requesterId: 'employee-private-id-2',
+      departmentId: 'DEPT-IT',
+      description: 'Another request stays visible during resolution',
+      status: 'Open',
+      ownerId: null as string | null,
+    },
+  ];
+  await page.route('**/requests/queue', async (route) => route.fulfill({ json: staffQueue }));
+  await page.route('**/requests/REQ-IT-QUEUE-001/assign', async (route) => {
+    staffQueue[0].ownerId = 'e2e-it.staff@example.test';
+    staffQueue[0].status = 'In Progress';
+    await route.fulfill({ json: staffQueue[0] });
+  });
+  await page.route('**/requests/REQ-IT-QUEUE-001/status', async (route) => {
+    const resolved = { ...staffQueue[0], status: 'Resolved' };
+    staffQueue.splice(0, 1);
+    await route.fulfill({ json: resolved });
+  });
+
   await page.goto('/');
   await page.getByLabel('Email').fill('it.staff@example.test');
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { name: 'IT request queue' })).toBeVisible();
-  await expect(page.getByRole('article')).toContainText('IT request visible to the IT team');
+  const resolvingRequest = page.getByRole('article').filter({ hasText: 'REQ-IT-QUEUE-001' });
+  const otherRequest = page.getByRole('article').filter({ hasText: 'REQ-IT-QUEUE-002' });
+  await expect(resolvingRequest).toContainText('IT request visible to the IT team');
+  await expect(otherRequest).toBeVisible();
   await expect(page.getByText('employee-private-id', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Submit request' })).toHaveCount(0);
+
+  await resolvingRequest.getByRole('button', { name: 'Take ownership' }).click();
+  await expect(resolvingRequest).toContainText('In Progress');
+  await resolvingRequest.getByRole('button', { name: 'Resolve request' }).click();
+  await expect(resolvingRequest).toHaveClass(/queue-request-card--removing/);
+  await expect.poll(async () => Number(await resolvingRequest.evaluate((card) => getComputedStyle(card).opacity))).toBeLessThan(0.5);
+  expect(await resolvingRequest.evaluate((card) => getComputedStyle(card).transitionDuration)).toContain('0.3s');
+  await expect(otherRequest).toBeVisible();
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(resolvingRequest).toHaveCount(0);
+  await expect(otherRequest).toBeVisible();
+});
+
+test('taking ownership moves that request to the top of the department queue', async ({ page }) => {
+  const queue = [
+    {
+      id: 'REQ-IT-NEWER',
+      requesterId: 'employee-newer',
+      departmentId: 'DEPT-IT',
+      description: 'Newer request that remains open',
+      status: 'Open',
+      ownerId: null as string | null,
+    },
+    {
+      id: 'REQ-IT-CLAIMED',
+      requesterId: 'employee-older',
+      departmentId: 'DEPT-IT',
+      description: 'Older request Staff will claim',
+      status: 'Open',
+      ownerId: null as string | null,
+    },
+  ];
+  await page.route('**/requests/queue', async (route) => route.fulfill({ json: queue }));
+  await page.route('**/requests/REQ-IT-CLAIMED/assign', async (route) => {
+    queue[1].status = 'In Progress';
+    queue[1].ownerId = 'e2e-it.staff@example.test';
+    queue.unshift(queue.pop()!);
+    await route.fulfill({ json: queue[0] });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Email').fill('it.staff@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  const requestCards = page.getByRole('article');
+  await expect(requestCards.nth(0)).toContainText('REQ-IT-NEWER');
+  await expect(requestCards.nth(1)).toContainText('REQ-IT-CLAIMED');
+
+  await requestCards.nth(1).getByRole('button', { name: 'Take ownership' }).click();
+  await expect(requestCards.nth(0)).toContainText('REQ-IT-CLAIMED');
+  await expect(requestCards.nth(0)).toContainText('In Progress');
+});
+
+test('Staff see a clear message if another staff member already took the request', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Email').fill('it.staff@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('button', { name: 'Take ownership' })).toBeVisible();
+
+  await page.route('**/requests/REQ-IT-QUEUE-001/assign', async (route) => {
+    await route.fulfill({ status: 409, json: { message: 'This request was already taken. Refresh the department queue.' } });
+  });
+  await page.getByRole('button', { name: 'Take ownership' }).click();
+  await expect(page.getByRole('alert')).toHaveText('This request was already taken. Refresh the department queue.');
+  await page.route('**/requests/queue', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await route.fulfill({ json: [{
+      id: 'REQ-IT-QUEUE-001',
+      requesterId: 'employee-private-id',
+      departmentId: 'DEPT-IT',
+      description: 'IT request visible to the IT team',
+      status: 'In Progress',
+      ownerId: 'another-staff',
+    }] });
+  });
+  await page.getByRole('button', { name: 'Refresh queue' }).click();
+  await expect(page.getByRole('button', { name: /Refreshing queue/ })).toBeDisabled();
+  await expect(page.getByRole('article')).toContainText('Open');
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(page.getByText('In Progress', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resolve request' })).toBeVisible();
 });
 
 test('admin authentication resolves the admin role without showing employee submission', async ({ page }) => {
