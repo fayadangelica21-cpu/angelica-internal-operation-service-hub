@@ -1,4 +1,5 @@
-import { API_URL, identityHeaders } from './config';
+import { getAuthToken } from './auth';
+import { API_URL } from './config';
 
 export type RequestRecord = {
   id: string;
@@ -31,9 +32,10 @@ function readErrorMessage(body: unknown): string {
 export async function createRequest(departmentId: string, description: string): Promise<RequestRecord> {
   let response: Response;
   try {
+    const token = await getAuthToken();
     response = await fetch(`${API_URL}/requests`, {
       method: 'POST',
-      headers: identityHeaders,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ departmentId, description }),
     });
   } catch {
@@ -51,9 +53,10 @@ export async function getTriageSuggestion(
 ): Promise<TriageSuggestion> {
   let response: Response;
   try {
+    const token = await getAuthToken();
     response = await fetch(`${API_URL}/triage`, {
       method: 'POST',
-      headers: identityHeaders,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         description,
         selectedDepartmentId: selectedDepartmentId ?? null,
