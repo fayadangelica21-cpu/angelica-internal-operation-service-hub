@@ -142,8 +142,7 @@ These must be rejected by the backend.
 ```http
 POST /triage
 Content-Type: application/json
-x-user-id: EMP-001
-x-user-role: Employee
+Authorization: Bearer <FIREBASE_ID_TOKEN>
 ```
 
 ```json
@@ -187,8 +186,7 @@ If these are not configured, the backend uses a safe deterministic fallback resp
 ```bash
 curl -X POST http://localhost:3001/triage \
   -H "Content-Type: application/json" \
-  -H "x-user-id: EMP-001" \
-  -H "x-user-role: Employee" \
+  -H "Authorization: Bearer $FIREBASE_ID_TOKEN" \
   -d '{"description":"Laptop screen flickers","selectedDepartmentId":"DEPT-IT"}'
 ```
 
