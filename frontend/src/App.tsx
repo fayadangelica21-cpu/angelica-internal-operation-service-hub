@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { createRequest, getTriageSuggestion, RequestRecord, TriageSuggestion } from './api';
+import { AuthProvider, useAuth } from './auth';
+import { AuthScreen } from './AuthScreen';
 
 const DEPARTMENTS = [
   { id: 'DEPT-IT', label: 'IT' },
@@ -28,6 +30,11 @@ function getClassificationTone(classification: TriageSuggestion['classification'
 }
 
 export function App() {
+  return <AuthProvider><RequestApp /></AuthProvider>;
+}
+
+function RequestApp() {
+  const { user, loading: authLoading, logout } = useAuth();
   const [departmentId, setDepartmentId] = useState<string>('DEPT-IT');
   const [description, setDescription] = useState('');
   const [request, setRequest] = useState<RequestRecord | null>(null);
@@ -38,13 +45,29 @@ export function App() {
   const [showAssistant, setShowAssistant] = useState(false);
 
   const requestReady = description.trim().length > 0;
-
   const helperText = useMemo(() => {
     if (!description.trim()) {
       return 'Describe the issue and let the assistant suggest the best department.';
     }
     return 'AI triage can help route the request before submission.';
   }, [description]);
+
+  if (authLoading) {
+    return <main className="app-shell"><section className="panel auth-panel" aria-live="polite">Checking your sign-in…</section></main>;
+  }
+  if (!user) return <AuthScreen />;
+  if (user.role !== 'Employee') {
+    return (
+      <main className="app-shell auth-shell">
+        <section className="panel auth-panel" aria-label="Role access">
+          <p className="eyebrow">Signed in</p>
+          <h1>{user.role} workspace</h1>
+          <p className="auth-intro">Your account is authenticated. The features for this role will be added in their own feature branch.</p>
+          <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
+        </section>
+      </main>
+    );
+  }
 
   async function getSuggestion() {
     const trimmedDescription = description.trim();
@@ -61,6 +84,7 @@ export function App() {
     try {
       const suggestion = await getTriageSuggestion(trimmedDescription, departmentId);
       setTriageSuggestion(suggestion);
+      if (suggestion.departmentId) setDepartmentId(suggestion.departmentId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create a triage suggestion.');
     } finally {
@@ -92,6 +116,9 @@ export function App() {
           <div className="panel-header">
             <p className="eyebrow">Request intake</p>
             <h1>Internal Operations Service Hub</h1>
+            <div className="signed-in-row">
+              <button type="button" className="text-button" onClick={() => void logout()}>Sign out</button>
+            </div>
           </div>
 
           <form onSubmit={submit} className="request-form">
@@ -179,6 +206,7 @@ export function App() {
               <p className="submitted-description">{request.description}</p>
             </section>
           )}
+
         </section>
 
         {showAssistant && (
@@ -254,15 +282,6 @@ export function App() {
                   <p>{triageSuggestion.requiresMoreInfo ? 'Yes' : 'No'}</p>
                 </div>
 
-                <div className="actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setDepartmentId(triageSuggestion.departmentId ?? departmentId)}
-                  >
-                    Use suggested department
-                  </button>
-                </div>
               </div>
             )}
           </aside>

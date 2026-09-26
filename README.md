@@ -29,13 +29,13 @@ Open → In Progress → Resolved
 - Automated business-rule, integration, and E2E tests
 - Regression protection for the forbidden `Open → Resolved` jump
 
-Out of scope for Week 4: real SSO, notifications, CI/CD, deployment, and production infrastructure. Identity for local runs uses development headers. The backend still makes every authorization decision.
+Out of scope for Week 4: company SSO, notifications, CI/CD, deployment, and production infrastructure. Firebase Authentication provides email/password sign-in for this project. The backend verifies Firebase ID tokens and makes every authorization decision.
 
 ---
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 20.19+ or 22.12+ (Vite 8 requirement)
 - npm
 
 No separate database server is required.
@@ -53,7 +53,11 @@ cp .env.example .env
 npm run start:dev
 ```
 
-Create a local `.env` file for backend runtime settings. The app loads it at startup through `dotenv.config()`, so the AI provider and database settings are available before the NestJS app begins serving requests. The template in `.env.example` is intentionally minimal and should be filled in with your local secrets.
+Create a local `.env` file for backend runtime settings. The app loads it at startup through `dotenv.config()`, so the AI provider and database settings are available before the NestJS app begins serving requests. Keep local secrets and service-account credentials out of source control.
+
+Set `FIREBASE_PROJECT_ID` to the Firebase project ID. Configure Google Application Default Credentials for this Firebase project on the backend machine; keep any service-account file outside the repository and never commit it. `FIREBASE_ROLE_ASSIGNMENTS` maps trusted Firebase UIDs to `Employee`, `Staff`, or `Admin` (with `departmentId` for Staff). Use the UID shown for each account in Firebase; do not map privileged roles by email because email addresses can be claimed during public signup. Unmapped signed-in accounts are Employees. The browser cannot set roles or staff departments.
+
+After Firebase verifies a user's ID token, `GET /auth/me` creates or updates that account's profile in the local SQLite `users` table, keyed by Firebase UID. The profile stores email, display name, role, and department where applicable; passwords remain in Firebase and are never stored in SQLite. Public signup is for demo Employee accounts and does not verify company employment.
 
 If `AI_BASE_URL` and `AI_API_KEY` are not set, the backend still starts successfully and uses a deterministic local fallback suggestion instead of failing the process. If both are present, the app logs that the live provider is enabled and the AI path is active.
 
@@ -87,17 +91,21 @@ npm run dev
 
 UI: `http://localhost:5173`
 
-The frontend uses Vite environment variables for local configuration. These are typed in `frontend/src/vite-env.d.ts` and read from `frontend/src/config.ts`.
+The frontend uses the Firebase web-app settings in `frontend/.env.example`; those public client settings also have defaults in the client. Enable Email/Password in Firebase Authentication before testing signup and login.
 
 Optional frontend env (`frontend/.env.example`):
 
 ```text
-VITE_API_URL=http://localhost:3001
-VITE_USER_ID=EMP-001
-VITE_USER_ROLE=Employee
+VITE_API_URL=
+VITE_FIREBASE_API_KEY=your-firebase-web-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-web-app-id
 ```
 
-This file is standard Vite setup so TypeScript recognizes `import.meta.env` without errors. The frontend in this Week 4 slice runs as an Employee. Staff/Admin identities are exercised through API/curl tests.
+Employees can create accounts from the app. Create Staff/Admin accounts in Firebase, copy each account's UID, then add its UID, role, and (for Staff) department to backend `FIREBASE_ROLE_ASSIGNMENTS`. The app shows the request form only to Employees; Staff/Admin sign in but see an access page until their role-specific feature is built.
 
 ### Stop the project
 
@@ -113,27 +121,25 @@ backend/data/service-hub.sqlite
 
 ## Exercise the user-facing flow
 
-1. Open `http://localhost:5173`.
-2. Select IT, HR, or Finance, or keep the assistant's suggested department only if you explicitly choose it with the assistant action.
-3. Enter a description (for example `Laptop screen flickers`).
-4. Click **Get AI triage suggestion**.
-5. Review the recommendation, including the suggested department, confidence, and next step. The suggestion is advisory only; it is not silently applied to the form.
-6. Either keep your current department or click **Use suggested department** to update the selected route before submission.
-7. Click **Submit request**.
-8. The UI should show the created request with status **Open**.
+1. Open `http://localhost:5173` and sign in, or create an Employee account.
+2. Enter a description (for example `Laptop screen flickers`).
+3. Click **Get AI suggestion**. If triage returns a department, the form selects it automatically; you can still change the department before submitting.
+4. Review the recommendation, confidence, and suggested next step.
+5. Click **Submit request**.
+6. The UI should show the created request with status **Open**.
 
-The frontend sends `POST /requests`. The backend derives `requesterId` from identity headers, not from the JSON body, and all request creation rules are enforced server-side.
+The frontend sends `POST /requests` with a Firebase ID token. The backend verifies the token and derives `requesterId` from its UID, not from the JSON body or identity headers.
 
 ---
 
 ## API contract
 
-Local identity headers (development adapter, not production auth):
+Authenticated API requests use:
 
 ```text
-x-user-id
-x-user-role          Employee | Staff | Admin
-x-user-department-id required for Staff
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+
+Roles and Staff department IDs come from backend `FIREBASE_ROLE_ASSIGNMENTS` configuration. `x-user-id`, `x-user-role`, and `x-user-department-id` headers are ignored.
 ```
 
 ### Triage a request with AI (Week 4)
@@ -165,8 +171,7 @@ The AI triage flow also has a local safety check before it calls the provider:
 ```http
 POST /triage
 Content-Type: application/json
-x-user-id: EMP-001
-x-user-role: Employee
+Authorization: Bearer <FIREBASE_ID_TOKEN>
 
 {
   "description": "Laptop screen flickers and the battery drains quickly",
@@ -205,8 +210,7 @@ The AI recommendation is advisory in the UI. The frontend shows it to the user, 
 ```http
 POST /requests
 Content-Type: application/json
-x-user-id: EMP-001
-x-user-role: Employee
+Authorization: Bearer <FIREBASE_ID_TOKEN>
 
 {
   "departmentId": "DEPT-IT",
@@ -220,7 +224,7 @@ Success (`201`):
 {
   "id": "uuid",
   "departmentId": "DEPT-IT",
-  "requesterId": "EMP-001",
+  "requesterId": "<FIREBASE_UID>",
   "description": "Laptop screen flickers",
   "status": "Open",
   "ownerId": null,
@@ -259,20 +263,18 @@ Backend must be running. Git Bash / macOS / Linux syntax:
 ```bash
 curl -X POST http://localhost:3001/requests \
   -H "Content-Type: application/json" \
-  -H "x-user-id: EMP-001" \
-  -H "x-user-role: Employee" \
+  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
   -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers"}'
 ```
 
-Expected: `201`, `status=Open`, `requesterId=EMP-001`.
+Expected: `201`, `status=Open`, and `requesterId` equal to the authenticated Firebase UID.
 
 **Invalid payload (rejected on purpose)**
 
 ```bash
 curl -X POST http://localhost:3001/requests \
   -H "Content-Type: application/json" \
-  -H "x-user-id: EMP-001" \
-  -H "x-user-role: Employee" \
+  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
   -d '{"departmentId":"DEPT-IT"}'
 ```
 
@@ -282,8 +284,7 @@ Expected: `400 Bad Request`.
 
 ```bash
 curl http://localhost:3001/requests/not-a-real-request \
-  -H "x-user-id: EMP-001" \
-  -H "x-user-role: Employee"
+  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN"
 ```
 
 Expected: `404 Not Found`.
@@ -294,8 +295,7 @@ Create a request as `EMP-001`, then:
 
 ```bash
 curl http://localhost:3001/requests/<REQUEST_ID> \
-  -H "x-user-id: EMP-002" \
-  -H "x-user-role: Employee"
+  -H "Authorization: Bearer $OTHER_EMPLOYEE_ID_TOKEN"
 ```
 
 Expected: `403 Forbidden`.
@@ -305,9 +305,7 @@ Expected: `403 Forbidden`.
 ```bash
 curl -X PATCH http://localhost:3001/requests/<REQ_ID>/assign \
   -H "Content-Type: application/json" \
-  -H "x-user-id: STAFF-IT-01" \
-  -H "x-user-role: Staff" \
-  -H "x-user-department-id: DEPT-IT" \
+  -H "Authorization: Bearer $IT_STAFF_ID_TOKEN" \
   -d '{"ownerId":"STAFF-IT-01"}'
 ```
 
@@ -316,9 +314,7 @@ Expected: `200`, status `In Progress`.
 ```bash
 curl -X PATCH http://localhost:3001/requests/<REQ_ID>/status \
   -H "Content-Type: application/json" \
-  -H "x-user-id: STAFF-IT-01" \
-  -H "x-user-role: Staff" \
-  -H "x-user-department-id: DEPT-IT" \
+  -H "Authorization: Bearer $IT_STAFF_ID_TOKEN" \
   -d '{"targetStatus":"Resolved"}'
 ```
 
@@ -356,8 +352,6 @@ npm run test:all
 
 ### E2E
 
-Start the backend on port `3001` first, then:
-
 ```bash
 cd frontend
 npm install
@@ -365,7 +359,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The browser test submits a request and verifies that the successful result is displayed with status 'Open'.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, and request submission. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
@@ -387,8 +381,8 @@ The browser test submits a request and verifies that the successful result is di
 
 ```text
 project/
-├── README.md
 ├── .gitignore
+├── README.md
 ├── .postman/
 │   └── resources.yaml
 ├── postman/
@@ -419,11 +413,16 @@ project/
 │   ├── tsconfig.json
 │   ├── tsconfig.build.json
 │   ├── tsconfig.spec.json
-│   ├── tsconfig.build.tsbuildinfo
-│   ├── tsconfig.tsbuildinfo
 │   ├── src/
 │   │   ├── app.module.ts
 │   │   ├── main.ts
+│   │   ├── auth/
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── auth.module.ts
+│   │   │   ├── firebase-auth.guard.ts
+│   │   │   ├── firebase-auth.service.ts
+│   │   │   ├── firebase-auth.service.spec.ts
+│   │   │   └── user.entity.ts
 │   │   ├── requests/
 │   │   │   ├── current-user.ts
 │   │   │   ├── request-state-machine.service.ts
@@ -447,6 +446,7 @@ project/
 │   │       ├── triage-provider.service.ts
 │   │       └── triage-provider.service.spec.ts
 │   └── test/
+│       ├── auth-http.spec.ts
 │       ├── requests-db.integration.spec.ts
 │       └── requests-http.spec.ts
 └── frontend/
@@ -457,15 +457,18 @@ project/
     ├── package-lock.json
     ├── playwright.config.ts
     ├── tsconfig.json
-    ├── vite.config.ts
+    ├── vite.config.mts
     ├── e2e/
     │   └── request-flow.spec.ts
     └── src/
         ├── App.tsx
+        ├── AuthScreen.tsx
         ├── api.ts
+        ├── auth.tsx
         ├── config.ts
         ├── main.tsx
         ├── styles.css
         └── vite-env.d.ts
 ```
+This tree lists project source and configuration files; ignored local secrets, databases, dependencies, and generated build artifacts are omitted.
 TypeORM `synchronize` is enabled for this local SQLite slice only.

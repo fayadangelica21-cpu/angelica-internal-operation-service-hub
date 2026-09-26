@@ -1,11 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AssignRequestDto } from './dto/assign-request.dto';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { RequestsService } from './requests.service';
 import { CurrentUser, CurrentUserData } from './current-user';
+import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
 @Controller('requests')
+@UseGuards(FirebaseAuthGuard)
 export class RequestsController {
   constructor(private readonly requestsService: RequestsService) {}
 

@@ -54,6 +54,8 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - Requests must be created through the Service Hub rather than by sending an email.
 - Users are authenticated company employees, and their role and department are known by the system.
 
+**Prototype implementation note:** the current demo uses Firebase email/password authentication, permits Employee self-sign-up, and assigns Staff/Admin roles from a server-side Firebase UID map. Signup does not verify that a person is a company employee, so it demonstrates authentication and role gating but does not yet satisfy the internal-employee identity assumption for production use.
+
 ## 8. Non-Goals (What We're Deliberately Not Solving)
 - Not building a full ticketing system with SLAs, escalation rules, or automated routing.
 - Not replacing existing dedicated HR or Finance software systems.
