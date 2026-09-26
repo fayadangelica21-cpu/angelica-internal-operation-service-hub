@@ -7,6 +7,16 @@ test.beforeEach(async ({ page }) => {
     const isAdmin = token.includes('admin');
     await route.fulfill({ json: { id: token, role: isAdmin ? 'Admin' : isStaff ? 'Staff' : 'Employee', ...(isStaff ? { departmentId: 'DEPT-IT' } : {}) } });
   });
+  await page.route('**/requests/queue', async (route) => {
+    expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
+    await route.fulfill({ json: [{
+      id: 'REQ-IT-QUEUE-001',
+      requesterId: 'employee-private-id',
+      departmentId: 'DEPT-IT',
+      description: 'IT request visible to the IT team',
+      status: 'Open',
+    }] });
+  });
   await page.route('**/requests', async (route) => {
     expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
     const payload = route.request().postDataJSON() as { departmentId: string; description: string };
@@ -99,12 +109,14 @@ test('login and employee signup require valid email and password fields', async 
   await expect(page.getByRole('alert')).toHaveText('Enter a name with at least 2 non-space characters.');
 });
 
-test('staff authentication resolves the staff role without showing employee submission', async ({ page }) => {
+test('Staff can view their department queue without seeing employee submission controls', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Email').fill('it.staff@example.test');
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Staff workspace' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'IT request queue' })).toBeVisible();
+  await expect(page.getByRole('article')).toContainText('IT request visible to the IT team');
+  await expect(page.getByText('employee-private-id', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Submit request' })).toHaveCount(0);
 });
 
