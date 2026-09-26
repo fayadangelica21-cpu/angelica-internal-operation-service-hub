@@ -7,6 +7,7 @@ export type RequestRecord = {
   requesterId: string;
   description: string;
   status: string;
+  ownerId?: string | null;
 };
 
 export type TriageSuggestion = {
@@ -62,6 +63,32 @@ export async function getDepartmentQueue(): Promise<RequestRecord[]> {
   if (!response.ok) throw new Error(readErrorMessage(body));
   if (!Array.isArray(body)) throw new Error('The department queue response was invalid.');
   return body as RequestRecord[];
+}
+
+async function patchRequest(id: string, action: 'assign' | 'status', payload: object): Promise<RequestRecord> {
+  let response: Response;
+  try {
+    const token = await getAuthToken();
+    response = await fetch(`${API_URL}/requests/${encodeURIComponent(id)}/${action}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+  }
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(readErrorMessage(body));
+  return body as RequestRecord;
+}
+
+export function takeOwnership(id: string, ownerId: string): Promise<RequestRecord> {
+  return patchRequest(id, 'assign', { ownerId });
+}
+
+export function resolveRequest(id: string): Promise<RequestRecord> {
+  return patchRequest(id, 'status', { targetStatus: 'Resolved' });
 }
 
 export async function getTriageSuggestion(
