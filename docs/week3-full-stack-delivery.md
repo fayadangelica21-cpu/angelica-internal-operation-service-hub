@@ -2,6 +2,8 @@
 
 ## 1. Delivery claim
 
+> **Authentication update:** the Week 3 sections below describe the original development identity adapter and header-based examples. The current project has replaced that adapter with Firebase Authentication; see the README and architecture document for the current token, role-mapping, and SQLite profile flow.
+
 This Week 3 delivery turns the existing Week 2 lifecycle slice into one narrow **user-facing, integrated, persistent, permission-aware, validated, failure-aware, automatically verified** flow.
 
 **Flow:** an Employee submits an internal service request for IT, HR, or Finance and immediately receives the newly created request in the `Open` state.
