@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createRequest, getDepartmentQueue, getTriageSuggestion, listOwnRequests, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
+import { createPortal } from 'react-dom';
+import { assignRequestToStaff, AssignableStaff, createRequest, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -61,6 +62,14 @@ function RequestApp() {
   const [ownRequestsError, setOwnRequestsError] = useState('');
   const [ownRequestsNotice, setOwnRequestsNotice] = useState('');
   const ownRequestsRefreshId = useRef(0);
+  const [assignmentRequestId, setAssignmentRequestId] = useState('');
+  const [assignmentRequest, setAssignmentRequest] = useState<RequestRecord | null>(null);
+  const [assignableStaff, setAssignableStaff] = useState<AssignableStaff[]>([]);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [assignmentError, setAssignmentError] = useState('');
+  const [assignmentSuccess, setAssignmentSuccess] = useState('');
 
   async function refreshOwnRequests(silent = false) {
     const refreshId = ++ownRequestsRefreshId.current;
@@ -101,6 +110,65 @@ function RequestApp() {
     }
   }
 
+  async function loadAssignmentRequest(event: React.FormEvent) {
+    event.preventDefault();
+    const requestedId = assignmentRequestId.trim();
+    if (!requestedId) return;
+    setAssignmentLoading(true);
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    setAssignmentRequest(null);
+    setAssignableStaff([]);
+    setSelectedAssigneeId('');
+    try {
+      const loadedRequest = await getRequestForAssignment(requestedId);
+      const staff = loadedRequest.status === 'Resolved' ? [] : await getAssignableStaff(loadedRequest.id);
+      setAssignmentRequest(loadedRequest);
+      setAssignableStaff(staff);
+      if (loadedRequest.ownerId && staff.some((candidate) => candidate.id === loadedRequest.ownerId)) {
+        setSelectedAssigneeId(loadedRequest.ownerId);
+      }
+    } catch (err) {
+      setAssignmentError(err instanceof Error ? err.message : 'Unable to load this request for assignment.');
+    } finally {
+      setAssignmentLoading(false);
+    }
+  }
+
+  function clearAssignmentLookup() {
+    setAssignmentRequestId('');
+    setAssignmentRequest(null);
+    setAssignableStaff([]);
+    setSelectedAssigneeId('');
+    setAssignmentError('');
+    setAssignmentSuccess('');
+  }
+
+  function openOwnRequests() {
+    setRequest(null);
+    setShowHistory(true);
+    setShowAssistant(false);
+    void refreshOwnRequests(true);
+  }
+
+  async function saveAdminAssignment(event: React.FormEvent) {
+    event.preventDefault();
+    if (!assignmentRequest || !selectedAssigneeId) return;
+    const wasAssigned = Boolean(assignmentRequest.ownerId);
+    setAssignmentSaving(true);
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    try {
+      const updatedRequest = await assignRequestToStaff(assignmentRequest.id, selectedAssigneeId);
+      setAssignmentRequest(updatedRequest);
+      setAssignmentSuccess(wasAssigned ? 'Request reassigned successfully.' : 'Request assigned successfully.');
+    } catch (err) {
+      setAssignmentError(err instanceof Error ? err.message : 'Unable to assign this request.');
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }
+
   async function processQueueRequest(item: RequestRecord) {
     if (!user || user.role !== 'Staff') return;
     setQueueActionId(item.id);
@@ -128,6 +196,18 @@ function RequestApp() {
 
   useEffect(() => {
     if (user?.role === 'Staff') void refreshDepartmentQueue();
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (user?.role === 'Admin') return;
+    setAssignmentRequestId('');
+    setAssignmentRequest(null);
+    setAssignableStaff([]);
+    setSelectedAssigneeId('');
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    setAssignmentLoading(false);
+    setAssignmentSaving(false);
   }, [user?.id, user?.role]);
 
   useEffect(() => {
@@ -219,6 +299,99 @@ function RequestApp() {
                 </article>
               ))}
             </div>
+          </section>
+        </main>
+      );
+    }
+    if (user.role === 'Admin') {
+      return (
+        <main className="app-shell auth-shell">
+          <section className="panel admin-assignment-panel" aria-label="Admin request assignment">
+            <div className="queue-heading">
+              <div>
+                <p className="eyebrow">Admin workspace</p>
+                <h1>Request assignment</h1>
+              </div>
+              <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
+            </div>
+            <p className="auth-intro">Enter a request ID to assign or reassign it to Staff in its department.</p>
+            <form className="admin-assignment-lookup" onSubmit={loadAssignmentRequest}>
+              <div className="field-group">
+                <label className="field-label" htmlFor="assignment-request-id">Request ID</label>
+                <input
+                  id="assignment-request-id"
+                  value={assignmentRequestId}
+                  onChange={(event) => {
+                    setAssignmentRequestId(event.target.value);
+                    setAssignmentRequest(null);
+                    setAssignableStaff([]);
+                    setAssignmentError('');
+                    setAssignmentSuccess('');
+                  }}
+                  required
+                  disabled={assignmentLoading || assignmentSaving}
+                  placeholder="Paste a request ID"
+                />
+              </div>
+              <div className="admin-assignment-lookup-actions">
+                <button className="btn btn-secondary" type="submit" disabled={assignmentLoading || !assignmentRequestId.trim()}>
+                  {assignmentLoading ? 'Loading request…' : 'Find request'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={clearAssignmentLookup} disabled={assignmentLoading || assignmentSaving || !assignmentRequestId && !assignmentRequest}>
+                  New lookup
+                </button>
+              </div>
+            </form>
+
+            {assignmentError && <div className="error-box" role="alert">{assignmentError}</div>}
+            {assignmentSuccess && <p className="assignment-success" role="status">{assignmentSuccess}</p>}
+
+            {assignmentRequest && (
+              <section className="status-card admin-assignment-request" aria-label="Request selected for assignment">
+                <div className="status-row">
+                  <strong>Request {assignmentRequest.id}</strong>
+                  <span className="status-badge">{assignmentRequest.status}</span>
+                </div>
+                <p className="submitted-description">{assignmentRequest.description}</p>
+                <div className="admin-assignment-meta">
+                  <span><strong>Department</strong>{getDepartmentLabel(assignmentRequest.departmentId)}</span>
+                  <span><strong>Current owner</strong>{assignmentRequest.ownerId
+                    ? assignableStaff.find((candidate) => candidate.id === assignmentRequest.ownerId)?.displayName
+                      || assignableStaff.find((candidate) => candidate.id === assignmentRequest.ownerId)?.email
+                      || assignmentRequest.ownerId
+                    : 'Unassigned'}</span>
+                </div>
+
+                {assignmentRequest.status === 'Resolved' ? (
+                  <p className="request-history-empty">Resolved requests cannot be assigned.</p>
+                ) : assignableStaff.length === 0 ? (
+                  <p className="request-history-empty">No Staff profiles are registered in this request’s department yet.</p>
+                ) : (
+                  <form className="admin-assignment-form" onSubmit={saveAdminAssignment}>
+                    <div className="field-group">
+                      <label className="field-label" htmlFor="request-assignee">Assign to Staff</label>
+                      <select
+                        id="request-assignee"
+                        value={selectedAssigneeId}
+                        onChange={(event) => setSelectedAssigneeId(event.target.value)}
+                        required
+                        disabled={assignmentSaving}
+                      >
+                        <option value="" disabled>Select a Staff member</option>
+                        {assignableStaff.map((staff) => (
+                          <option key={staff.id} value={staff.id}>
+                            {staff.displayName || staff.email || staff.id}{staff.displayName && staff.email ? ` — ${staff.email}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button className="btn btn-primary" type="submit" disabled={assignmentSaving || !selectedAssigneeId}>
+                      {assignmentSaving ? 'Saving assignment…' : assignmentRequest.ownerId ? 'Reassign request' : 'Assign request'}
+                    </button>
+                  </form>
+                )}
+              </section>
+            )}
           </section>
         </main>
       );
@@ -359,29 +532,25 @@ function RequestApp() {
           )}
 
           {request && (
-            <section className="status-card" aria-label="Created request">
-              <div className="status-row">
-                <span className="eyebrow">Submitted</span>
-                <span className="status-badge" aria-label={`Request status ${request.status}`}>
-                  {request.status}
-                </span>
-              </div>
-
-              <h2>Request submitted</h2>
-
-              <div className="meta-grid">
-                <div>
+            createPortal(<div className="submission-dialog-backdrop">
+              <section className="submission-dialog" role="dialog" aria-modal="true" aria-labelledby="submission-dialog-title">
+                <button className="submission-dialog-close" type="button" aria-label="Close submission confirmation" onClick={() => setRequest(null)}>×</button>
+                <div className="submission-dialog-kicker">
+                  <div className="submission-success-icon" aria-hidden="true">✓</div>
+                  <p className="eyebrow">Successfully submitted</p>
+                </div>
+                <h2 id="submission-dialog-title">Request submitted</h2>
+                <p className="submission-dialog-copy">Your request was submitted successfully. Open the <strong>My requests</strong> tab to see its status and updates.</p>
+                <div className="submission-request-id">
                   <span className="meta-label">Request ID</span>
                   <strong>{request.id}</strong>
                 </div>
-                <div>
-                  <span className="meta-label">Department</span>
-                  <strong>{getDepartmentLabel(request.departmentId)}</strong>
+                <div className="submission-dialog-actions">
+                  <button className="btn btn-primary" type="button" onClick={openOwnRequests}>Go to My requests</button>
+                  <button className="btn btn-secondary" type="button" onClick={() => setRequest(null)}>Continue submitting</button>
                 </div>
-              </div>
-
-              <p className="submitted-description">{request.description}</p>
-            </section>
+              </section>
+            </div>, document.body)
           )}
           </div>}
 
