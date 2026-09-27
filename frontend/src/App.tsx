@@ -22,6 +22,26 @@ function formatSubmittedAt(value?: string): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toLocaleString();
 }
 
+function formatExpectedResolutionDate(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function combineExpectedResolutionDateTime(dateValue: string, timeValue: string): string {
+  if (!dateValue && !timeValue) return '';
+  const today = new Date();
+  const [year, month, day] = dateValue
+    ? dateValue.split('-').map(Number)
+    : [today.getFullYear(), today.getMonth() + 1, today.getDate()];
+  const [hour, minute] = timeValue
+    ? timeValue.split(':').map(Number)
+    : [23, 59];
+  const dateOnly = Boolean(dateValue) && !timeValue;
+  const date = new Date(year, month - 1, day, hour, minute, dateOnly ? 59 : 0, dateOnly ? 999 : 0);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
 function getClassificationTone(classification: TriageSuggestion['classification']) {
   switch (classification) {
     case 'clear':
@@ -44,6 +64,8 @@ function RequestApp() {
   const { user, loading: authLoading, logout } = useAuth();
   const [departmentId, setDepartmentId] = useState<string>('DEPT-IT');
   const [description, setDescription] = useState('');
+  const [expectedResolutionDate, setExpectedResolutionDate] = useState('');
+  const [expectedResolutionTime, setExpectedResolutionTime] = useState('');
   const [request, setRequest] = useState<RequestRecord | null>(null);
   const [triageSuggestion, setTriageSuggestion] = useState<TriageSuggestion | null>(null);
   const [error, setError] = useState('');
@@ -335,7 +357,8 @@ function RequestApp() {
     return () => window.clearInterval(refreshInterval);
   }, [user?.id, user?.role]);
 
-  const requestReady = description.trim().length > 0;
+  const descriptionReady = description.trim().length > 0;
+  const requestReady = descriptionReady && (expectedResolutionDate.length > 0 || expectedResolutionTime.length > 0);
   const visibleAdminRequests = useMemo(
     () => adminDepartmentFilter === 'ALL'
       ? adminRequests
@@ -354,13 +377,6 @@ function RequestApp() {
       : adminWorkload.staff.filter((item) => item.departmentId === adminDepartmentFilter),
     [adminDepartmentFilter, adminWorkload.staff],
   );
-  const helperText = useMemo(() => {
-    if (!description.trim()) {
-      return 'Describe the issue and let the assistant suggest the best department.';
-    }
-    return 'AI triage can help route the request before submission.';
-  }, [description]);
-
   if (authLoading) {
     return <main className="app-shell"><section className="panel auth-panel" aria-live="polite">Checking your sign-in…</section></main>;
   }
@@ -406,6 +422,9 @@ function RequestApp() {
                     <span className="status-badge">{item.status}</span>
                   </div>
                   <p className="submitted-description">{item.description}</p>
+                  {formatExpectedResolutionDate(item.expectedResolutionDate) && (
+                    <p className="queue-request-expected-date">Expected by {formatExpectedResolutionDate(item.expectedResolutionDate)}</p>
+                  )}
                   <div className="queue-request-footer">
                     <span className="queue-department-label">{getDepartmentLabel(item.departmentId)}</span>
                     {item.status === 'Open' && (
@@ -505,6 +524,7 @@ function RequestApp() {
                   <div className="admin-request-meta">
                     <span><strong>Department</strong>{getDepartmentLabel(item.departmentId)}</span>
                     <span><strong>Current owner</strong>{item.ownerDisplayName || item.ownerId || 'Unassigned'}</span>
+                    <span><strong>Expected by</strong>{formatExpectedResolutionDate(item.expectedResolutionDate) || 'Unknown'}</span>
                     {item.createdAt && <span><strong>Submitted</strong>{formatSubmittedAt(item.createdAt) || 'Unknown'}</span>}
                     {item.updatedAt && <span><strong>Last updated</strong>{formatSubmittedAt(item.updatedAt) || 'Unknown'}</span>}
                   </div>
@@ -739,11 +759,24 @@ function RequestApp() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError('');
+    const expectedResolutionAt = combineExpectedResolutionDateTime(expectedResolutionDate, expectedResolutionTime);
+    if (!expectedResolutionAt) {
+      setError('Choose a date, a time, or both for the expected resolution.');
+      return;
+    }
+    if (new Date(expectedResolutionAt).getTime() <= Date.now()) {
+      setError('Choose a future expected resolution. A time without a date applies to today.');
+      return;
+    }
     setRequest(null);
     setLoading(true);
 
     try {
-      const created = await createRequest(departmentId, description.trim());
+      const created = await createRequest(
+        departmentId,
+        description.trim(),
+        expectedResolutionAt,
+      );
       setRequest(created);
       setOwnRequests((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       void refreshOwnRequests(true);
@@ -805,12 +838,33 @@ function RequestApp() {
                 onChange={(event) => setDescription(event.target.value)}
                 required
                 maxLength={1000}
-                placeholder="Describe the issue, access problem, payroll question, or policy question..."
+                placeholder="Describe the issue, access problem, payroll question, or policy question... Use AI suggestion for department help."
               />
             </div>
 
-            <div className="helper-row">
-              <span>{helperText}</span>
+            <div className="field-group">
+              <label htmlFor="expected-resolution-date" className="field-label">Expected resolution date and time</label>
+              <div className="expected-date-control">
+                <input
+                  id="expected-resolution-date"
+                  type="date"
+                  value={expectedResolutionDate}
+                  onChange={(event) => setExpectedResolutionDate(event.target.value)}
+                  aria-label="Expected resolution date"
+                  aria-describedby="expected-resolution-date-help"
+                />
+                <input
+                  id="expected-resolution-time"
+                  type="time"
+                  value={expectedResolutionTime}
+                  onChange={(event) => setExpectedResolutionTime(event.target.value)}
+                  aria-label="Expected resolution time"
+                  aria-describedby="expected-resolution-date-help"
+                />
+                <span className="expected-date-tooltip" id="expected-resolution-date-help" role="tooltip">
+                  Choose a date, a time, or both. A date without a time means by 11:59 PM that day; a time without a date means today. Time uses your local time zone.
+                </span>
+              </div>
             </div>
 
             <div className="actions">
@@ -818,7 +872,7 @@ function RequestApp() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={getSuggestion}
-                disabled={triageLoading || !requestReady}
+                disabled={triageLoading || !descriptionReady}
               >
                 {triageLoading ? 'Thinking…' : 'Get AI suggestion'}
               </button>
@@ -899,6 +953,7 @@ function RequestApp() {
                       <p className="request-history-description">{item.description}</p>
                       <div className="request-history-meta">
                         <span>{getDepartmentLabel(item.departmentId)}</span>
+                        <span>Expected by {formatExpectedResolutionDate(item.expectedResolutionDate) || 'Unknown'}</span>
                         {submittedAt && <time dateTime={item.createdAt}>{submittedAt}</time>}
                       </div>
                       <div className="request-history-timeline-block">
