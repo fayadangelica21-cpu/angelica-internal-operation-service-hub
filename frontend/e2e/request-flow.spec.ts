@@ -140,6 +140,35 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await expect(page.getByRole('region', { name: 'Your requests' })).toHaveCount(0);
 });
 
+test('Employee workspace shows only the authenticated employee history and no privileged views', async ({ page }) => {
+  await page.route('**/requests', async (route) => {
+    expect(route.request().method()).toBe('GET');
+    expect(route.request().headers().authorization).toBe('Bearer e2e-token:e2e-employee@example.test');
+    await route.fulfill({ json: [{
+      id: 'REQ-PRIVACY-OWN',
+      requesterId: 'e2e-employee@example.test',
+      departmentId: 'DEPT-IT',
+      description: 'My private request',
+      status: 'Open',
+      ownerId: null,
+      createdAt: new Date().toISOString(),
+      statusHistory: [{ historyId: 'HIST-PRIVACY-OWN', fromStatus: null, toStatus: 'Open', changedAt: new Date().toISOString() }],
+    }] });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Email').fill('employee@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('tab', { name: 'My requests' }).click();
+
+  const requestHistory = page.getByRole('region', { name: 'Your requests' });
+  await expect(requestHistory).toContainText('My private request');
+  await expect(requestHistory).not.toContainText('Another employee private request');
+  await expect(page.getByRole('region', { name: 'Department request queue' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'All requests across departments' })).toHaveCount(0);
+});
+
 test('AI triage automatically selects the suggested department', async ({ page }) => {
   await page.route('**/triage', async (route) => {
     await route.fulfill({
