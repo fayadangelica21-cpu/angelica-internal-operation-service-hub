@@ -205,6 +205,7 @@ test('Staff can take ownership of a request and resolve it from their department
     },
   ];
   await page.route('**/requests/queue', async (route) => route.fulfill({ json: staffQueue }));
+  await page.route('**/requests/admin', async (route) => route.fulfill({ json: [] }));
   await page.route('**/requests/REQ-IT-QUEUE-001/assign', async (route) => {
     staffQueue[0].ownerId = 'e2e-it.staff@example.test';
     staffQueue[0].status = 'In Progress';
@@ -325,6 +326,10 @@ test('Admin can assign, reassign, and move a request to another department', asy
     { id: 'staff-hr-two', displayName: 'HR Two', email: 'hr.two@example.test' },
   ];
   await page.route('**/requests/REQ-ADMIN-FR6-001', async (route) => route.fulfill({ json: targetRequest }));
+  await page.route('**/requests/admin', async (route) => route.fulfill({ json: [{
+    ...targetRequest,
+    ownerDisplayName: targetRequest.ownerId ? (targetRequest.ownerId === 'staff-hr-one' ? 'HR One' : 'HR Two') : null,
+  }] }));
   await page.route('**/requests/REQ-ADMIN-FR6-001/assignees', async (route) => route.fulfill({ json: targetRequest.departmentId === 'DEPT-HR' ? staffMembers : [
     { id: 'staff-it-one', displayName: 'IT One', email: 'it.one@example.test' },
   ] }));
@@ -346,11 +351,13 @@ test('Admin can assign, reassign, and move a request to another department', asy
   await page.getByLabel('Email').fill('admin@example.test');
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Request assignment' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'All requests' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Submit request' })).toHaveCount(0);
 
-  await page.getByLabel('Request ID').fill('REQ-ADMIN-FR6-001');
-  await page.getByRole('button', { name: 'Find request' }).click();
+  const monitor = page.getByRole('region', { name: 'All requests across departments' });
+  await page.getByRole('button', { name: 'Manage assignment' }).click();
+  await expect(monitor).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Manage request' })).toBeVisible();
   const selectedRequest = page.getByRole('region', { name: 'Request selected for assignment' });
   await expect(selectedRequest).toContainText('HR request that needs an owner');
   await expect(page.getByLabel('Assign to Staff')).toContainText('HR One');
@@ -367,14 +374,12 @@ test('Admin can assign, reassign, and move a request to another department', asy
   await expect(page.getByRole('status')).toHaveText('Request reassigned successfully.');
   await expect(selectedRequest).toContainText('HR Two');
 
-  await page.getByRole('button', { name: 'New lookup' }).click();
-  await expect(page.getByLabel('Request ID')).toHaveValue('');
+  await page.getByRole('button', { name: 'Back to requests' }).click();
+  await expect(monitor).toBeVisible();
   await expect(selectedRequest).toHaveCount(0);
   await expect(page.getByRole('status')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Find request' })).toBeDisabled();
 
-  await page.getByLabel('Request ID').fill('REQ-ADMIN-FR6-001');
-  await page.getByRole('button', { name: 'Find request' }).click();
+  await page.getByRole('button', { name: 'Manage assignment' }).click();
   await expect(selectedRequest).toBeVisible();
   await page.getByLabel('Move to another department').selectOption('DEPT-IT');
   await page.getByRole('button', { name: 'Move department' }).click();
@@ -383,6 +388,60 @@ test('Admin can assign, reassign, and move a request to another department', asy
   await expect(selectedRequest).toContainText('Current ownerUnassigned');
   await expect(selectedRequest).toContainText('Open');
   await expect(page.getByLabel('Assign to Staff')).toContainText('IT One');
+  await page.getByRole('button', { name: 'Back to requests' }).click();
+  await expect(monitor).toContainText('Unassigned');
+  await expect(monitor.getByRole('article')).toContainText('IT');
+});
+
+test('Admin can monitor requests from all departments and refresh the list', async ({ page }) => {
+  const requests = [
+    { id: 'REQ-ADMIN-LIST-IT', departmentId: 'DEPT-IT', description: 'IT request for monitoring', status: 'Open', ownerId: null, ownerDisplayName: null },
+    { id: 'REQ-ADMIN-LIST-HR', departmentId: 'DEPT-HR', description: 'HR request for monitoring', status: 'In Progress', ownerId: 'staff-hr-one', ownerDisplayName: 'HR One' },
+    { id: 'REQ-ADMIN-LIST-FINANCE', departmentId: 'DEPT-FINANCE', description: 'Finance request for monitoring', status: 'Resolved', ownerId: null, ownerDisplayName: null },
+  ];
+  let listCalls = 0;
+  await page.route('**/requests/admin', async (route) => {
+    listCalls += 1;
+    await route.fulfill({ json: requests });
+  });
+  await page.route('**/requests/REQ-ADMIN-LIST-HR', async (route) => route.fulfill({ json: requests[1] }));
+  await page.route('**/requests/REQ-ADMIN-LIST-HR/assignees', async (route) => route.fulfill({ json: [
+    { id: 'staff-hr-one', displayName: 'HR One', email: 'hr.one@example.test' },
+  ] }));
+
+  await page.goto('/');
+  await page.getByLabel('Email').fill('admin@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await expect(page.getByRole('heading', { name: 'All requests' })).toBeVisible();
+  const monitor = page.getByRole('region', { name: 'All requests across departments' });
+  await expect(monitor.getByRole('article')).toHaveCount(3);
+  await expect(monitor).toContainText('IT request for monitoring');
+  await expect(monitor).toContainText('HR request for monitoring');
+  await expect(monitor).toContainText('Finance request for monitoring');
+  await expect(monitor).toContainText('HR One');
+
+  await page.getByLabel('Department', { exact: true }).selectOption('DEPT-HR');
+  await expect(monitor.getByRole('article')).toHaveCount(1);
+  await expect(monitor).toContainText('HR request for monitoring');
+  await expect(monitor).not.toContainText('IT request for monitoring');
+  await expect(monitor).not.toContainText('Finance request for monitoring');
+  await expect(monitor).toContainText('Showing 1 of 3 requests');
+
+  await monitor.getByRole('button', { name: 'Manage assignment' }).click();
+  await expect(monitor).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Manage request' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to requests' }).click();
+  await expect(monitor).toBeVisible();
+  await expect(page.getByLabel('Department', { exact: true })).toHaveValue('DEPT-HR');
+
+  await page.getByLabel('Department', { exact: true }).selectOption('ALL');
+  await expect(monitor.getByRole('article')).toHaveCount(3);
+
+  await page.getByRole('button', { name: 'Refresh requests' }).click();
+  await expect.poll(() => listCalls).toBeGreaterThan(1);
+  await expect(monitor.getByRole('article')).toHaveCount(3);
 });
 
 test('a delayed profile response from an older account cannot replace the current login', async ({ page }) => {
@@ -410,9 +469,9 @@ test('a delayed profile response from an older account cannot replace the curren
     localStorage.setItem('service-hub-e2e-user', JSON.stringify({ uid: 'current-user', email: 'current@example.test' }));
     window.dispatchEvent(new Event('service-hub-auth-changed'));
   });
-  await expect(page.getByRole('heading', { name: 'Request assignment' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'All requests' })).toBeVisible();
   releaseOldProfile?.();
-  await expect(page.getByRole('heading', { name: 'Request assignment' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'All requests' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Employee workspace' })).toHaveCount(0);
 });
 
