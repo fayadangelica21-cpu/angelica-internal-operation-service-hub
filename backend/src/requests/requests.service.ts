@@ -15,6 +15,16 @@ import { UserEntity } from '../auth/user.entity';
 type RequestUpdateCriteria = Parameters<Repository<RequestEntity>['update']>[0];
 type RequestUpdateValues = Parameters<Repository<RequestEntity>['update']>[1];
 const WORKLOAD_DEPARTMENTS = ['DEPT-IT', 'DEPT-HR', 'DEPT-FINANCE'] as const;
+const DUE_SOON_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+function getDeadlineStatus(request: RequestEntity, now: number): 'overdue' | 'due-soon' | null {
+  if (request.status === RequestStatus.RESOLVED || !request.expectedResolutionDate) return null;
+  const deadline = Date.parse(request.expectedResolutionDate);
+  if (!Number.isFinite(deadline)) return null;
+  if (deadline <= now) return 'overdue';
+  if (deadline - now <= DUE_SOON_WINDOW_MS) return 'due-soon';
+  return null;
+}
 
 type WorkloadCountRow = {
   departmentId: string;
@@ -78,10 +88,12 @@ export class RequestsService {
       relations: { statusHistory: true },
       order: { createdAt: 'DESC' },
     });
+    const now = Date.now();
     return requests.map((request) => {
       const { statusHistory = [], ...requestDetails } = request;
       return {
         ...requestDetails,
+        deadlineStatus: getDeadlineStatus(request, now) === 'overdue' ? 'overdue' : null,
         statusHistory: statusHistory
           .slice()
           .sort((left, right) => left.changedAt.getTime() - right.changedAt.getTime())
@@ -95,7 +107,7 @@ export class RequestsService {
     });
   }
 
-  async getAllRequestsForAdmin(user: CurrentUserData): Promise<(RequestEntity & { ownerDisplayName: string | null })[]> {
+  async getAllRequestsForAdmin(user: CurrentUserData): Promise<(RequestEntity & { ownerDisplayName: string | null; deadlineStatus: 'overdue' | 'due-soon' | null })[]> {
     if (user.role !== 'Admin') {
       throw new ForbiddenException('Only Admins can view requests across all departments.');
     }
@@ -110,8 +122,10 @@ export class RequestsService {
       })
       : [];
     const ownerNames = new Map(owners.map((owner) => [owner.id, owner.displayName || owner.email || owner.id]));
-    return requests.map((request) => Object.assign(request, {
+    const now = Date.now();
+    return requests.map((request) => ({ ...request,
       ownerDisplayName: request.ownerId ? ownerNames.get(request.ownerId) || request.ownerId : null,
+      deadlineStatus: getDeadlineStatus(request, now),
     }));
   }
 
@@ -190,20 +204,52 @@ export class RequestsService {
     };
   }
 
-  async getDepartmentQueue(user: CurrentUserData): Promise<RequestEntity[]> {
+  async getDepartmentQueue(user: CurrentUserData): Promise<(RequestEntity & { deadlineStatus: 'due-soon' | null })[]> {
     if (user.role !== 'Staff') {
       throw new ForbiddenException('Only department staff can view the department queue.');
     }
     if (!user.departmentId) {
       throw new ForbiddenException('Staff account has no assigned department.');
     }
-    return this.requestsRepository.find({
+    const requests = await this.requestsRepository.find({
       where: {
         departmentId: user.departmentId,
         status: In([RequestStatus.OPEN, RequestStatus.IN_PROGRESS]),
       },
       order: { updatedAt: 'DESC', createdAt: 'DESC' },
     });
+    const now = Date.now();
+    return requests
+      .filter((request) => getDeadlineStatus(request, now) !== 'overdue')
+      .map((request) => ({
+        ...request,
+        deadlineStatus: getDeadlineStatus(request, now) === 'due-soon' ? 'due-soon' as const : null,
+      }));
+  }
+
+  async getOverdueDepartmentQueue(user: CurrentUserData): Promise<(RequestEntity & { deadlineStatus: 'overdue' })[]> {
+    if (user.role !== 'Staff') {
+      throw new ForbiddenException('Only department staff can view the department overdue queue.');
+    }
+    if (!user.departmentId) {
+      throw new ForbiddenException('Staff account has no assigned department.');
+    }
+    const requests = await this.requestsRepository.find({
+      where: {
+        departmentId: user.departmentId,
+        status: In([RequestStatus.OPEN, RequestStatus.IN_PROGRESS]),
+      },
+      order: { updatedAt: 'DESC', createdAt: 'DESC' },
+    });
+    const now = Date.now();
+    const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    return requests
+      .filter((request) => {
+        if (getDeadlineStatus(request, now) !== 'overdue') return false;
+        const deadline = Date.parse(request.expectedResolutionDate ?? '');
+        return deadline >= oneWeekAgo;
+      })
+      .map((request) => ({ ...request, deadlineStatus: 'overdue' as const }));
   }
 
   async getAssignableStaff(user: CurrentUserData, id: string): Promise<Pick<UserEntity, 'id' | 'displayName' | 'email'>[]> {
