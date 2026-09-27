@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RequestEntity } from '../src/requests/entities/request.entity';
+import { UserEntity } from '../src/auth/user.entity';
 import { RequestStatus } from '../src/requests/enums/request-status.enum';
 import { RequestStateMachineService } from '../src/requests/request-state-machine.service';
 import { RequestsService } from '../src/requests/requests.service';
@@ -9,6 +10,7 @@ import { RequestsService } from '../src/requests/requests.service';
 describe('RequestsService database integration', () => {
   let service: RequestsService;
   let repository: Repository<RequestEntity>;
+  let usersRepository: Repository<UserEntity>;
   let moduleRef: Awaited<ReturnType<ReturnType<typeof Test.createTestingModule>['compile']>>;
 
   beforeAll(async () => {
@@ -17,15 +19,16 @@ describe('RequestsService database integration', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [RequestEntity],
+          entities: [RequestEntity, UserEntity],
           synchronize: true,
         }),
-        TypeOrmModule.forFeature([RequestEntity]),
+        TypeOrmModule.forFeature([RequestEntity, UserEntity]),
       ],
       providers: [RequestsService, RequestStateMachineService],
     }).compile();
     service = moduleRef.get(RequestsService);
     repository = moduleRef.get(getRepositoryToken(RequestEntity));
+    usersRepository = moduleRef.get(getRepositoryToken(UserEntity));
   });
 
   afterAll(async () => {
@@ -124,5 +127,32 @@ describe('RequestsService database integration', () => {
     const queue = await service.getDepartmentQueue(staff);
     expect(queue[0].id).toBe(claimedRequest.id);
     expect(queue.map((request) => request.id)).toContain(newerRequest.id);
+  });
+
+  it('lets an Admin assign and reassign a request only to Staff in its department', async () => {
+    const request = await service.create(
+      { id: 'EMP-ADMIN-ASSIGNMENT', role: 'Employee' },
+      { departmentId: 'DEPT-HR', description: 'Request for Admin staff assignment' },
+    );
+    const staff = [
+      { id: 'STAFF-HR-ASSIGN-1', email: 'hr.one@example.test', displayName: 'HR One', role: 'Staff' as const, departmentId: 'DEPT-HR' },
+      { id: 'STAFF-HR-ASSIGN-2', email: 'hr.two@example.test', displayName: 'HR Two', role: 'Staff' as const, departmentId: 'DEPT-HR' },
+      { id: 'STAFF-IT-ASSIGN', email: 'it.staff@example.test', displayName: 'IT Staff', role: 'Staff' as const, departmentId: 'DEPT-IT' },
+    ];
+    await usersRepository.save(staff);
+    const admin = { id: 'ADMIN-ASSIGNMENT', role: 'Admin' as const };
+
+    const candidates = await service.getAssignableStaff(admin, request.id);
+    expect(candidates.map((candidate) => candidate.id)).toEqual(['STAFF-HR-ASSIGN-1', 'STAFF-HR-ASSIGN-2']);
+
+    const assigned = await service.assign(admin, request.id, { ownerId: 'STAFF-HR-ASSIGN-1' });
+    expect(assigned).toMatchObject({ ownerId: 'STAFF-HR-ASSIGN-1', status: RequestStatus.IN_PROGRESS });
+
+    const reassigned = await service.assign(admin, request.id, { ownerId: 'STAFF-HR-ASSIGN-2' });
+    expect(reassigned).toMatchObject({ ownerId: 'STAFF-HR-ASSIGN-2', status: RequestStatus.IN_PROGRESS });
+
+    await expect(service.assign(admin, request.id, { ownerId: 'STAFF-IT-ASSIGN' })).rejects.toThrow(
+      'Choose a Staff member assigned to the request department.',
+    );
   });
 });
