@@ -8,12 +8,15 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { RequestEntity } from './entities/request.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { RequestStateMachineService } from './request-state-machine.service';
+import { UserEntity } from '../auth/user.entity';
 
 @Injectable()
 export class RequestsService {
   constructor(
     @InjectRepository(RequestEntity)
     private readonly requestsRepository: Repository<RequestEntity>,
+    @InjectRepository(UserEntity)
+    private readonly usersRepository: Repository<UserEntity>,
     private readonly stateMachineService: RequestStateMachineService,
   ) {}
 
@@ -65,8 +68,28 @@ export class RequestsService {
     });
   }
 
+  async getAssignableStaff(user: CurrentUserData, id: string): Promise<Pick<UserEntity, 'id' | 'displayName' | 'email'>[]> {
+    if (user.role !== 'Admin') {
+      throw new ForbiddenException('Only Admins can view staff available for assignment.');
+    }
+    const request = await this.requestsRepository.findOneBy({ id });
+    if (!request) throw new NotFoundException(`Request with ID ${id} not found.`);
+    if (request.status === RequestStatus.RESOLVED) {
+      throw new BadRequestException('Resolved requests cannot be assigned.');
+    }
+
+    return this.usersRepository.find({
+      where: { role: 'Staff', departmentId: request.departmentId },
+      select: { id: true, displayName: true, email: true },
+      order: { displayName: 'ASC', email: 'ASC' },
+    });
+  }
+
   async assign(user: CurrentUserData, id: string, dto: AssignRequestDto): Promise<RequestEntity> {
     const request = await this.findOne(user, id);
+    if (user.role === 'Admin') {
+      return this.assignForAdmin(request, id, dto.ownerId);
+    }
     if (user.role !== 'Staff') {
       throw new ForbiddenException('Only department staff can take ownership in this slice.');
     }
@@ -93,6 +116,38 @@ export class RequestsService {
     );
     if (result.affected !== 1) {
       throw new ConflictException('This request was already taken or changed. Refresh the department queue.');
+    }
+    return this.requestsRepository.findOneByOrFail({ id });
+  }
+
+  private async assignForAdmin(request: RequestEntity, id: string, ownerId: string): Promise<RequestEntity> {
+    if (request.status === RequestStatus.RESOLVED) {
+      throw new BadRequestException('Resolved requests cannot be assigned.');
+    }
+    const assignee = await this.usersRepository.findOneBy({
+      id: ownerId,
+      role: 'Staff',
+      departmentId: request.departmentId,
+    });
+    if (!assignee) {
+      throw new BadRequestException('Choose a Staff member assigned to the request department.');
+    }
+
+    if (request.status === RequestStatus.OPEN) {
+      this.stateMachineService.validateTransition(request.status, RequestStatus.IN_PROGRESS);
+    }
+    const criteria = {
+      id,
+      departmentId: request.departmentId,
+      status: request.status,
+      ownerId: request.ownerId ?? IsNull(),
+    };
+    const result = await this.requestsRepository.update(criteria, {
+      ownerId,
+      ...(request.status === RequestStatus.OPEN ? { status: RequestStatus.IN_PROGRESS } : {}),
+    });
+    if (result.affected !== 1) {
+      throw new ConflictException('This request was changed by another user. Reload it before assigning staff.');
     }
     return this.requestsRepository.findOneByOrFail({ id });
   }
