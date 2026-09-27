@@ -175,4 +175,35 @@ describe('RequestsService database integration', () => {
     expect((await service.getDepartmentQueue(itStaff)).map((item) => item.id)).not.toContain(request.id);
     expect((await service.getDepartmentQueue(hrStaff)).map((item) => item.id)).toContain(request.id);
   });
+
+  it('returns all departments with readable owners only for Admins', async () => {
+    const itRequest = await service.create(
+      { id: 'EMP-ADMIN-LIST-IT', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'IT request for Admin overview' },
+    );
+    const financeRequest = await service.create(
+      { id: 'EMP-ADMIN-LIST-FINANCE', role: 'Employee' },
+      { departmentId: 'DEPT-FINANCE', description: 'Finance request for Admin overview' },
+    );
+    await usersRepository.save({
+      id: 'STAFF-FINANCE-ADMIN-LIST',
+      email: 'finance.staff@example.test',
+      displayName: 'Finance Staff',
+      role: 'Staff',
+      departmentId: 'DEPT-FINANCE',
+    });
+    await service.assign(
+      { id: 'ADMIN-LIST', role: 'Admin' },
+      financeRequest.id,
+      { ownerId: 'STAFF-FINANCE-ADMIN-LIST' },
+    );
+
+    const requests = await service.getAllRequestsForAdmin({ id: 'ADMIN-LIST', role: 'Admin' });
+    expect(requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: itRequest.id, departmentId: 'DEPT-IT', ownerDisplayName: null }),
+      expect.objectContaining({ id: financeRequest.id, departmentId: 'DEPT-FINANCE', ownerDisplayName: 'Finance Staff' }),
+    ]));
+    await expect(service.getAllRequestsForAdmin({ id: 'STAFF-IT-LIST', role: 'Staff', departmentId: 'DEPT-IT' }))
+      .rejects.toThrow('Only Admins can view requests across all departments.');
+  });
 });
