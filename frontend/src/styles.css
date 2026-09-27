@@ -90,6 +90,7 @@ textarea {
 }
 
 .admin-monitor-panel > .auth-intro,
+.admin-workload-panel > .auth-intro,
 .admin-assignment-panel > .auth-intro {
   font-size: 0.88rem;
   line-height: 1.45;
@@ -269,7 +270,8 @@ button {
   padding-block: 32px;
 }
 
-.admin-monitor-panel {
+.admin-monitor-panel,
+.admin-workload-panel {
   display: flex;
   flex-direction: column;
   width: min(100%, 900px);
@@ -277,6 +279,24 @@ button {
   height: min(82vh, 820px);
   max-height: calc(100vh - 64px);
   overflow-y: auto;
+}
+
+.admin-workload-panel {
+  overflow: hidden;
+}
+
+.admin-workload-panel > .queue-heading,
+.admin-workload-panel > .auth-intro,
+.admin-workload-panel > .admin-workload-toolbar {
+  flex-shrink: 0;
+}
+
+.admin-workload-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
 }
 
 .admin-monitor-actions {
@@ -312,6 +332,139 @@ button {
   margin: 0 0 10px;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.admin-workload-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 14px 0 18px;
+}
+
+.admin-workload-toolbar .field-group {
+  width: min(100%, 280px);
+}
+
+.admin-workload-toolbar select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: inherit;
+}
+
+.admin-staff-workload h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.admin-department-workload-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.admin-department-workload {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 2px 6px rgba(15, 37, 64, 0.05);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  transform: translateZ(0);
+}
+
+.admin-department-workload:hover {
+  transform: perspective(700px) translateY(-4px) rotateX(1deg);
+  border-color: rgba(22, 59, 102, 0.28);
+  box-shadow: 0 12px 22px rgba(15, 37, 64, 0.14);
+}
+
+.admin-department-workload h2 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+}
+
+.admin-department-workload > strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 1.45rem;
+}
+
+.admin-department-workload > span,
+.admin-department-workload > small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.admin-department-workload > small {
+  grid-column: 1 / -1;
+}
+
+.admin-staff-workload {
+  margin-top: 18px;
+}
+
+.admin-workload-table-wrap {
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.admin-workload-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.admin-workload-table caption {
+  padding: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.admin-workload-table th,
+.admin-workload-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-workload-table thead th {
+  color: var(--muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-workload-table tbody th {
+  font-weight: 600;
+}
+
+.admin-workload-table tbody tr {
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.admin-workload-table tbody tr:hover {
+  background: rgba(22, 59, 102, 0.07);
+  color: var(--primary-dark);
+}
+
+.admin-workload-table tbody tr:hover th {
+  color: var(--primary);
 }
 
 .admin-request-list {
@@ -1319,6 +1472,11 @@ textarea:focus {
   }
 
   .admin-monitor-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-workload-toolbar {
     align-items: flex-start;
     flex-direction: column;
   }
