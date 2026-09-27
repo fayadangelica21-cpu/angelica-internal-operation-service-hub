@@ -39,13 +39,14 @@ describe('RequestsService database integration', () => {
   it('persists a newly submitted request and can read the durable row back from the database', async () => {
     const created = await service.create(
       { id: 'EMP-001', role: 'Employee' },
-      { departmentId: 'DEPT-IT', description: 'Laptop screen flickers' },
+      { departmentId: 'DEPT-IT', description: 'Laptop screen flickers', expectedResolutionDate: '2026-10-15T17:30:00.000Z' },
     );
     const stored = await repository.findOneByOrFail({ id: created.id });
 
     expect(stored.requesterId).toBe('EMP-001');
     expect(stored.status).toBe(RequestStatus.OPEN);
     expect(stored.description).toBe('Laptop screen flickers');
+    expect(stored.expectedResolutionDate).toBe('2026-10-15T17:30:00.000Z');
   });
 
   it('returns only requests owned by the authenticated Employee', async () => {
