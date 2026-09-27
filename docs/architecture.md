@@ -40,7 +40,7 @@ creation, and any AI action that bypasses backend validation (full exclusion lis
 | FR5 | Department staff update the status of requests. |
 | FR6 | Staff take ownership; admins assign or reassign staff. |
 | FR7 | Admins reassign a request to the correct department when it was submitted to the wrong one. |
-| FR8 | Requests carry an expected resolution date. |
+| FR8 | Employees provide a local expected resolution date, time, or both; the backend stores the resulting UTC timestamp. |
 | FR9 | Admins identify overdue requests. |
 | FR10 | Employees are notified when a request status changes. |
 | FR11 | Employees view their full request history. |
@@ -162,7 +162,7 @@ applies, not in which components they touch:
 | FR5 (staff updates status) | Client → Frontend → Backend API → Database (write) → Notification |
 | FR6 (ownership/assignment) | Client → Frontend → Backend API → Database (write owner field) |
 | FR7 (reassign wrong dept) | Client → Frontend → Backend API → Database (write dept field) |
-| FR8 (expected resolution date) | Client → Frontend → Backend API → Database (write) |
+| FR8 (expected resolution date and time) | Client → Frontend → Backend API → Database (write) |
 | FR9 (overdue detection) | Backend API (scheduled) → Database (read) — no new component |
 | FR10 (notify on status change) | Backend API → Notification Service |
 | FR11 (request history) | Client → Frontend → Backend API → Database (read, unfiltered by status) |
