@@ -57,6 +57,7 @@ describe('Requests HTTP boundaries', () => {
   const staffHeaders = (id: string, departmentId: string) => ({
     Authorization: `Bearer test:${id}:Staff:${departmentId}`,
   });
+  const adminHeaders = (id: string) => ({ Authorization: `Bearer test:${id}:Admin` });
 
   it('rejects a create payload with no description', async () => {
     await request(app.getHttpServer())
@@ -208,6 +209,59 @@ describe('Requests HTTP boundaries', () => {
       .set(staffHeaders('STAFF-IT-B', 'DEPT-IT'))
       .expect(200);
     expect(stillClaimed.body.ownerId).toBe('STAFF-IT-A');
+  });
+
+  it('lets Admins assign and reassign a request only to Staff in its department', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-ADMIN-ASSIGN'))
+      .send({ departmentId: 'DEPT-HR', description: 'Request for Admin assignment' })
+      .expect(201);
+
+    for (const staff of [
+      { id: 'STAFF-HR-ADMIN-1', departmentId: 'DEPT-HR' },
+      { id: 'STAFF-HR-ADMIN-2', departmentId: 'DEPT-HR' },
+      { id: 'STAFF-IT-ADMIN', departmentId: 'DEPT-IT' },
+    ]) {
+      await request(app.getHttpServer())
+        .get('/auth/me')
+        .set(staffHeaders(staff.id, staff.departmentId))
+        .expect(200);
+    }
+
+    const candidates = await request(app.getHttpServer())
+      .get(`/requests/${created.body.id}/assignees`)
+      .set(adminHeaders('ADMIN-ASSIGN'))
+      .expect(200);
+    expect(candidates.body.map((staff: { id: string }) => staff.id)).toEqual([
+      'STAFF-HR-ADMIN-1',
+      'STAFF-HR-ADMIN-2',
+    ]);
+
+    await request(app.getHttpServer())
+      .get(`/requests/${created.body.id}/assignees`)
+      .set(staffHeaders('STAFF-HR-ADMIN-1', 'DEPT-HR'))
+      .expect(403);
+
+    const assigned = await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(adminHeaders('ADMIN-ASSIGN'))
+      .send({ ownerId: 'STAFF-HR-ADMIN-1' })
+      .expect(200);
+    expect(assigned.body).toMatchObject({ ownerId: 'STAFF-HR-ADMIN-1', status: 'In Progress' });
+
+    const reassigned = await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(adminHeaders('ADMIN-ASSIGN'))
+      .send({ ownerId: 'STAFF-HR-ADMIN-2' })
+      .expect(200);
+    expect(reassigned.body).toMatchObject({ ownerId: 'STAFF-HR-ADMIN-2', status: 'In Progress' });
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(adminHeaders('ADMIN-ASSIGN'))
+      .send({ ownerId: 'STAFF-IT-ADMIN' })
+      .expect(400);
   });
 
   it('requires the valid lifecycle step before Staff can resolve a request', async () => {
