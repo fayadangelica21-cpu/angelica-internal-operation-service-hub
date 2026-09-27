@@ -6,6 +6,8 @@ Architecture reasoning only — this document is a design draft, not an implemen
 Input: `product-spec.md`. Every decision below traces back to a Functional Requirement (FR),
 Non-Functional Requirement (NFR), or Specification/Constraint (SPEC) ID from that document.
 
+**Current implementation note:** the running prototype uses Firebase email/password authentication and SQLite. Status-change notifications (FR10) are not implemented; employees see changes after their request list refreshes. Staff have a separate overdue queue for requests whose deadlines fell within the previous seven days.
+
 ---
 
 ## 1. Purpose + Scope
@@ -36,12 +38,12 @@ creation, and any AI action that bypasses backend validation (full exclusion lis
 | FR1 | Employees submit a new request by selecting a department and describing the issue. |
 | FR2 | Employees can request AI-assisted triage before final submission; the backend validates the response before showing it. |
 | FR3 | Employees view the status of their own requests. |
-| FR4 | Department staff view requests assigned to their department. |
+| FR4 | Department staff view active requests assigned to their department; recently overdue requests have a separate view. |
 | FR5 | Department staff update the status of requests. |
 | FR6 | Staff take ownership; admins assign or reassign staff. |
 | FR7 | Admins reassign a request to the correct department when it was submitted to the wrong one. |
 | FR8 | Employees provide a local expected resolution date, time, or both; the backend stores the resulting UTC timestamp. |
-| FR9 | Admins identify overdue requests. |
+| FR9 | Backend derives overdue and due-soon status for active requests; Employees and Admins see overdue requests in red, Staff see overdue requests from the previous seven days in a separate view and due-soon marks in their active queue, and Admins cannot open Manage assignment for overdue requests and receive an alert for requests due within three hours. |
 | FR10 | Employees are notified when a request status changes. |
 | FR11 | Employees view their full request history. |
 | FR12 | Admins view and monitor all requests across departments. |
@@ -98,7 +100,7 @@ systems).
 2. **AI triage suggestion** (FR2) — Client → Frontend → Backend API → AI Triage Service (bounded prompt) → Backend validation → Frontend displays only the validated suggestion
 3. **Status update** (FR5, FR10) — Staff via Frontend → Backend API → Database (write) → Notification Service → Employee notified
 4. **Take ownership / reassign** (FR6, FR7) — Staff/Admin → Backend API → Database (write owner/department field)
-5. **Overdue detection** (FR9) — Backend API (scheduled check) → Database (read `expected_resolution_date` < now) → flagged in Admin view
+5. **Deadline monitoring** (FR9) — Employee history, Staff active/overdue queue, and Admin request-list reads → Backend API derives status from each authorized list's expected deadline and current status; Employee and Admin UIs show overdue in red, the Staff active queue shows a due-soon mark and the separate Staff overdue view includes only deadlines from the previous seven days, and the Admin UI disables Manage assignment for overdue requests and alerts for due-soon requests
 6. **Cross-department monitoring** (FR12) — Admin → Frontend → Backend API → Database (aggregate read across all departments, bypassing the FR13 isolation filter only for the Admin role)
 7. **Workload monitoring** (FR14) — Admin → Frontend → Backend API → Database (aggregate read, grouped by staff/department) → displayed in Admin dashboard
 
@@ -163,7 +165,7 @@ applies, not in which components they touch:
 | FR6 (ownership/assignment) | Client → Frontend → Backend API → Database (write owner field) |
 | FR7 (reassign wrong dept) | Client → Frontend → Backend API → Database (write dept field) |
 | FR8 (expected resolution date and time) | Client → Frontend → Backend API → Database (write) |
-| FR9 (overdue detection) | Backend API (scheduled) → Database (read) — no new component |
+| FR9 (overdue and due-soon indicators) | Employee/Staff/Admin client → Backend API (derive from current time/status) → Database (read); Employee/Admin display overdue, Staff display due-soon mark, Admin disables assignment management and displays due-soon warning |
 | FR10 (notify on status change) | Backend API → Notification Service |
 | FR11 (request history) | Client → Frontend → Backend API → Database (read, unfiltered by status) |
 | FR12 (admin cross-dept view) | Client → Frontend → Backend API → Database (read, unfiltered by department) |
@@ -217,7 +219,7 @@ unfiltered default.
 | Client → Frontend → Backend API | Synchronous | User needs immediate confirmation before moving on | NFR2, FR1, FR5 |
 | Backend API → Database | Synchronous | Correctness depends on the caller knowing immediately whether the write committed | SPEC2, SPEC4 |
 | Backend API → Notification service | Asynchronous | Must never block or reverse a status update (fire-and-forget, retried/logged on failure) | FR10 |
-| Overdue detection | Asynchronous (scheduled) | Not user-triggered — a periodic sweep, not a real-time push | FR9 |
+| Deadline indicators | Synchronous on Admin list refresh | Derived from current time and request status; the existing five-second refresh keeps the Admin view current | FR9 |
 | Frontend → Backend API → AI Triage Service | Synchronous | The employee needs the suggestion immediately before submission, but the backend still owns validation and trust | FR2 |
 
 **Rule of thumb**: anything the user is waiting on to confirm their action succeeded is
