@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { assignRequestToStaff, AssignableStaff, createRequest, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, reassignRequestDepartment, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
+import { assignRequestToStaff, AssignableStaff, createRequest, getAllRequestsForAdmin, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, reassignRequestDepartment, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -62,7 +62,12 @@ function RequestApp() {
   const [ownRequestsError, setOwnRequestsError] = useState('');
   const [ownRequestsNotice, setOwnRequestsNotice] = useState('');
   const ownRequestsRefreshId = useRef(0);
-  const [assignmentRequestId, setAssignmentRequestId] = useState('');
+  const [adminRequests, setAdminRequests] = useState<RequestRecord[]>([]);
+  const [adminRequestsLoading, setAdminRequestsLoading] = useState(false);
+  const [adminRequestsError, setAdminRequestsError] = useState('');
+  const [adminRequestsNotice, setAdminRequestsNotice] = useState('');
+  const adminRequestsRefreshId = useRef(0);
+  const [adminDepartmentFilter, setAdminDepartmentFilter] = useState('ALL');
   const [assignmentRequest, setAssignmentRequest] = useState<RequestRecord | null>(null);
   const [assignableStaff, setAssignableStaff] = useState<AssignableStaff[]>([]);
   const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
@@ -71,6 +76,8 @@ function RequestApp() {
   const [assignmentError, setAssignmentError] = useState('');
   const [assignmentSuccess, setAssignmentSuccess] = useState('');
   const [targetDepartmentId, setTargetDepartmentId] = useState('');
+  const [adminScreen, setAdminScreen] = useState<'monitor' | 'assignment'>('monitor');
+  const adminAssignmentLoadId = useRef(0);
 
   async function refreshOwnRequests(silent = false) {
     const refreshId = ++ownRequestsRefreshId.current;
@@ -94,6 +101,28 @@ function RequestApp() {
     }
   }
 
+  async function refreshAdminRequests(silent = false) {
+    const refreshId = ++adminRequestsRefreshId.current;
+    if (!silent) setAdminRequestsLoading(true);
+    setAdminRequestsError('');
+    setAdminRequestsNotice('');
+    try {
+      const nextRequests = await getAllRequestsForAdmin();
+      if (refreshId === adminRequestsRefreshId.current) setAdminRequests(nextRequests);
+    } catch (err) {
+      if (refreshId === adminRequestsRefreshId.current) {
+        const message = err instanceof Error ? err.message : 'Unable to load requests across departments.';
+        if (silent || adminRequests.length > 0) {
+          setAdminRequestsNotice('Could not refresh all requests. The displayed list is unchanged; please try again.');
+        } else {
+          setAdminRequestsError(message);
+        }
+      }
+    } finally {
+      if (!silent && refreshId === adminRequestsRefreshId.current) setAdminRequestsLoading(false);
+    }
+  }
+
   async function refreshDepartmentQueue(silent = false) {
     if (!silent) setQueueLoading(true);
     setQueueError('');
@@ -111,40 +140,45 @@ function RequestApp() {
     }
   }
 
-  async function loadAssignmentRequest(event: React.FormEvent) {
-    event.preventDefault();
-    const requestedId = assignmentRequestId.trim();
-    if (!requestedId) return;
-    setAssignmentLoading(true);
-    setAssignmentError('');
-    setAssignmentSuccess('');
-    setAssignmentRequest(null);
+  async function openAdminAssignment(item: RequestRecord) {
+    const loadId = ++adminAssignmentLoadId.current;
+    setAdminScreen('assignment');
+    setAssignmentRequest(item);
     setAssignableStaff([]);
     setSelectedAssigneeId('');
     setTargetDepartmentId('');
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    setAssignmentLoading(true);
     try {
-      const loadedRequest = await getRequestForAssignment(requestedId);
-      const staff = loadedRequest.status === 'Resolved' ? [] : await getAssignableStaff(loadedRequest.id);
+      const loadedRequest = await getRequestForAssignment(item.id);
+      if (loadId !== adminAssignmentLoadId.current) return;
       setAssignmentRequest(loadedRequest);
+      const staff = loadedRequest.status === 'Resolved' ? [] : await getAssignableStaff(loadedRequest.id);
+      if (loadId !== adminAssignmentLoadId.current) return;
       setAssignableStaff(staff);
       if (loadedRequest.ownerId && staff.some((candidate) => candidate.id === loadedRequest.ownerId)) {
         setSelectedAssigneeId(loadedRequest.ownerId);
       }
     } catch (err) {
-      setAssignmentError(err instanceof Error ? err.message : 'Unable to load this request for assignment.');
+      if (loadId === adminAssignmentLoadId.current) {
+        setAssignmentError(err instanceof Error ? err.message : 'Unable to load this request for assignment.');
+      }
     } finally {
-      setAssignmentLoading(false);
+      if (loadId === adminAssignmentLoadId.current) setAssignmentLoading(false);
     }
   }
 
-  function clearAssignmentLookup() {
-    setAssignmentRequestId('');
+  function returnToAdminMonitor() {
+    adminAssignmentLoadId.current += 1;
+    setAdminScreen('monitor');
     setAssignmentRequest(null);
     setAssignableStaff([]);
     setSelectedAssigneeId('');
     setTargetDepartmentId('');
     setAssignmentError('');
     setAssignmentSuccess('');
+    setAssignmentLoading(false);
   }
 
   function openOwnRequests() {
@@ -164,6 +198,10 @@ function RequestApp() {
     try {
       const updatedRequest = await assignRequestToStaff(assignmentRequest.id, selectedAssigneeId);
       setAssignmentRequest(updatedRequest);
+      const selectedStaff = assignableStaff.find((staff) => staff.id === updatedRequest.ownerId);
+      setAdminRequests((current) => current.map((item) => item.id === updatedRequest.id
+        ? { ...updatedRequest, ownerDisplayName: selectedStaff?.displayName || selectedStaff?.email || updatedRequest.ownerId || null }
+        : item));
       setAssignmentSuccess(wasAssigned ? 'Request reassigned successfully.' : 'Request assigned successfully.');
     } catch (err) {
       setAssignmentError(err instanceof Error ? err.message : 'Unable to assign this request.');
@@ -181,6 +219,9 @@ function RequestApp() {
     try {
       const updatedRequest = await reassignRequestDepartment(assignmentRequest.id, targetDepartmentId);
       setAssignmentRequest(updatedRequest);
+      setAdminRequests((current) => current.map((item) => item.id === updatedRequest.id
+        ? { ...updatedRequest, ownerDisplayName: null }
+        : item));
       setTargetDepartmentId('');
       setSelectedAssigneeId('');
       setAssignmentSuccess(`Request moved to ${getDepartmentLabel(updatedRequest.departmentId)} and returned to the Open queue.`);
@@ -227,8 +268,29 @@ function RequestApp() {
   }, [user?.id, user?.role]);
 
   useEffect(() => {
+    if (user?.role !== 'Admin') {
+      setAdminRequests([]);
+      setAdminRequestsLoading(false);
+      setAdminRequestsError('');
+      setAdminRequestsNotice('');
+      setAdminDepartmentFilter('ALL');
+      setAdminScreen('monitor');
+      adminAssignmentLoadId.current += 1;
+      return;
+    }
+    setAdminRequests([]);
+    void refreshAdminRequests();
+    const refreshInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshAdminRequests(true);
+    }, 5000);
+    return () => {
+      window.clearInterval(refreshInterval);
+      adminRequestsRefreshId.current += 1;
+    };
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
     if (user?.role === 'Admin') return;
-    setAssignmentRequestId('');
     setAssignmentRequest(null);
     setAssignableStaff([]);
     setSelectedAssigneeId('');
@@ -250,6 +312,12 @@ function RequestApp() {
   }, [user?.id, user?.role]);
 
   const requestReady = description.trim().length > 0;
+  const visibleAdminRequests = useMemo(
+    () => adminDepartmentFilter === 'ALL'
+      ? adminRequests
+      : adminRequests.filter((item) => item.departmentId === adminDepartmentFilter),
+    [adminDepartmentFilter, adminRequests],
+  );
   const helperText = useMemo(() => {
     if (!description.trim()) {
       return 'Describe the issue and let the assistant suggest the best department.';
@@ -271,20 +339,20 @@ function RequestApp() {
                 <p className="eyebrow">Staff workspace</p>
                 <h1>{getDepartmentLabel(user.departmentId ?? null)} request queue</h1>
               </div>
-              <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
+              <div className="admin-monitor-actions">
+                <button
+                  className="btn btn-secondary refresh-queue-button"
+                  type="button"
+                  onClick={() => void refreshDepartmentQueue()}
+                  disabled={queueLoading || queueActionId !== null}
+                  aria-busy={queueLoading}
+                >
+                  {queueLoading ? <><span className="queue-refresh-spinner" aria-hidden="true" />Refreshing queue…</> : 'Refresh queue'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
+              </div>
             </div>
-            <div className="queue-toolbar">
-              <p className="auth-intro">Active requests assigned to your department.</p>
-              <button
-                className="btn btn-secondary refresh-queue-button"
-                type="button"
-                onClick={() => void refreshDepartmentQueue()}
-                disabled={queueLoading || queueActionId !== null}
-                aria-busy={queueLoading}
-              >
-                {queueLoading ? <><span className="queue-refresh-spinner" aria-hidden="true" />Refreshing queue…</> : 'Refresh queue'}
-              </button>
-            </div>
+            <p className="auth-intro">Active requests assigned to your department.</p>
             {queueLoading && departmentQueue.length === 0 && <p role="status">Loading department requests…</p>}
             {queueError && <div className="error-box" role="alert">{queueError}</div>}
             {queueNotice && <div className="error-box" role="alert">{queueNotice}</div>}
@@ -334,43 +402,86 @@ function RequestApp() {
     }
     if (user.role === 'Admin') {
       return (
-        <main className="app-shell auth-shell">
+        <main className="app-shell auth-shell admin-workspace-shell">
+          {adminScreen === 'monitor' ? (
+          <section className="panel admin-monitor-panel" aria-label="All requests across departments">
+            <div className="queue-heading">
+              <div>
+                <p className="eyebrow">Admin workspace</p>
+                <h1>All requests</h1>
+              </div>
+              <div className="admin-monitor-actions">
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={() => void refreshAdminRequests()}
+                  disabled={adminRequestsLoading}
+                  aria-busy={adminRequestsLoading}
+                >
+                  {adminRequestsLoading ? 'Refreshing…' : 'Refresh requests'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
+              </div>
+            </div>
+            <p className="auth-intro">Monitor requests from IT, HR, and Finance. The list refreshes automatically while this page is open.</p>
+            <div className="admin-monitor-toolbar">
+              <div className="field-group">
+                <label className="field-label" htmlFor="admin-department-filter">Department</label>
+                <select
+                  id="admin-department-filter"
+                  value={adminDepartmentFilter}
+                  onChange={(event) => setAdminDepartmentFilter(event.target.value)}
+                >
+                  <option value="ALL">All departments</option>
+                  {DEPARTMENTS.map((department) => (
+                    <option key={department.id} value={department.id}>{department.label}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="admin-monitor-count" aria-live="polite">
+                Showing {visibleAdminRequests.length} of {adminRequests.length} requests
+              </p>
+            </div>
+            {adminRequestsLoading && adminRequests.length === 0 && <p role="status">Loading all requests…</p>}
+            {adminRequestsError && <div className="error-box" role="alert">{adminRequestsError}</div>}
+            {adminRequestsNotice && <div className="error-box" role="alert">{adminRequestsNotice}</div>}
+            {!adminRequestsLoading && !adminRequestsError && adminRequests.length === 0 && (
+              <p className="request-history-empty">No requests have been submitted yet.</p>
+            )}
+            {!adminRequestsLoading && !adminRequestsError && adminRequests.length > 0 && visibleAdminRequests.length === 0 && (
+              <p className="request-history-empty">No {getDepartmentLabel(adminDepartmentFilter)} requests found.</p>
+            )}
+            <div className="admin-request-list">
+              {!adminRequestsError && visibleAdminRequests.map((item) => (
+                <article className="admin-request-card" key={item.id}>
+                  <div className="status-row">
+                    <strong>Request {item.id}</strong>
+                    <span className="status-badge">{item.status}</span>
+                  </div>
+                  <p className="admin-request-description">{item.description}</p>
+                  <div className="admin-request-meta">
+                    <span><strong>Department</strong>{getDepartmentLabel(item.departmentId)}</span>
+                    <span><strong>Current owner</strong>{item.ownerDisplayName || item.ownerId || 'Unassigned'}</span>
+                    {item.createdAt && <span><strong>Submitted</strong>{formatSubmittedAt(item.createdAt) || 'Unknown'}</span>}
+                    {item.updatedAt && <span><strong>Last updated</strong>{formatSubmittedAt(item.updatedAt) || 'Unknown'}</span>}
+                  </div>
+                  <button className="btn btn-secondary admin-request-manage" type="button" onClick={() => void openAdminAssignment(item)}>
+                    Manage assignment
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
+          ) : (
           <section className="panel admin-assignment-panel" aria-label="Admin request assignment">
             <div className="queue-heading">
               <div>
                 <p className="eyebrow">Admin workspace</p>
-                <h1>Request assignment</h1>
+                <h1>Manage request</h1>
               </div>
-              <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
+              <button className="btn btn-secondary" type="button" onClick={returnToAdminMonitor}>Back to requests</button>
             </div>
-            <p className="auth-intro">Enter a request ID to assign or reassign it to Staff in its department.</p>
-            <form className="admin-assignment-lookup" onSubmit={loadAssignmentRequest}>
-              <div className="field-group">
-                <label className="field-label" htmlFor="assignment-request-id">Request ID</label>
-                <input
-                  id="assignment-request-id"
-                  value={assignmentRequestId}
-                  onChange={(event) => {
-                    setAssignmentRequestId(event.target.value);
-                    setAssignmentRequest(null);
-                    setAssignableStaff([]);
-                    setAssignmentError('');
-                    setAssignmentSuccess('');
-                  }}
-                  required
-                  disabled={assignmentLoading || assignmentSaving}
-                  placeholder="Paste a request ID"
-                />
-              </div>
-              <div className="admin-assignment-lookup-actions">
-                <button className="btn btn-secondary" type="submit" disabled={assignmentLoading || !assignmentRequestId.trim()}>
-                  {assignmentLoading ? 'Loading request…' : 'Find request'}
-                </button>
-                <button className="btn btn-secondary" type="button" onClick={clearAssignmentLookup} disabled={assignmentLoading || assignmentSaving || !assignmentRequestId && !assignmentRequest}>
-                  New lookup
-                </button>
-              </div>
-            </form>
+            <p className="auth-intro">Assign this request to Staff or move it to another department.</p>
 
             {assignmentError && <div className="error-box" role="alert">{assignmentError}</div>}
             {assignmentSuccess && <p className="assignment-success" role="status">{assignmentSuccess}</p>}
@@ -382,6 +493,7 @@ function RequestApp() {
                   <span className="status-badge">{assignmentRequest.status}</span>
                 </div>
                 <p className="submitted-description">{assignmentRequest.description}</p>
+                {assignmentLoading && <p role="status">Loading request details and Staff options…</p>}
                 <div className="admin-assignment-meta">
                   <span><strong>Department</strong>{getDepartmentLabel(assignmentRequest.departmentId)}</span>
                   <span><strong>Current owner</strong>{assignmentRequest.ownerId
@@ -414,10 +526,12 @@ function RequestApp() {
                   </form>
                 )}
 
-                {assignmentRequest.status === 'Resolved' ? (
+                {assignmentLoading ? null : assignmentRequest.status === 'Resolved' ? (
                   <p className="request-history-empty">Resolved requests cannot be assigned.</p>
                 ) : assignableStaff.length === 0 ? (
-                  <p className="request-history-empty">No Staff profiles are registered in this request’s department yet.</p>
+                  <p className="request-history-empty">{assignmentError
+                    ? 'Eligible Staff options are unavailable. Return to the request list and try again.'
+                    : 'No Staff profiles are registered in this request’s department yet.'}</p>
                 ) : (
                   <form className="admin-assignment-form" onSubmit={saveAdminAssignment}>
                     <div className="field-group">
@@ -445,6 +559,7 @@ function RequestApp() {
               </section>
             )}
           </section>
+          )}
         </main>
       );
     }
