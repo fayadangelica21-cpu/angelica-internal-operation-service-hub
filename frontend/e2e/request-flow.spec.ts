@@ -39,9 +39,10 @@ test.beforeEach(async ({ page }) => {
     requesterId: string;
     departmentId: string;
     description: string;
-    status: string;
-    ownerId: null;
-    createdAt: string;
+      status: string;
+      ownerId: null;
+      createdAt: string;
+      statusHistory: { historyId: string; fromStatus: string | null; toStatus: string; changedAt: string }[];
   }[] = [];
   await page.route('**/requests', async (route) => {
     expect(route.request().headers().authorization).toMatch(/^Bearer e2e-token:/);
@@ -58,6 +59,7 @@ test.beforeEach(async ({ page }) => {
       status: 'Open',
       ownerId: null,
       createdAt: new Date().toISOString(),
+      statusHistory: [{ historyId: `HIST-${employeeRequests.length + 1}-OPEN`, fromStatus: null, toStatus: 'Open', changedAt: new Date().toISOString() }],
     };
     employeeRequests.unshift(record);
     await route.fulfill({
@@ -109,16 +111,30 @@ test('employee can submit a request and see the persisted lifecycle starting sta
       {
         id: 'REQ-E2E-2', requesterId: 'e2e-employee@example.test', departmentId: 'DEPT-HR',
         description: 'Need help understanding my leave balance', status: 'In Progress', createdAt: new Date().toISOString(),
+        statusHistory: [
+          { historyId: 'REQ-E2E-2-OPEN', fromStatus: null, toStatus: 'Open', changedAt: new Date(Date.now() - 3000).toISOString() },
+          { historyId: 'REQ-E2E-2-PROGRESS', fromStatus: 'Open', toStatus: 'In Progress', changedAt: new Date(Date.now() - 1000).toISOString() },
+        ],
       },
       {
         id: 'REQ-E2E-1', requesterId: 'e2e-employee@example.test', departmentId: 'DEPT-IT',
         description: 'Laptop screen flickers', status: 'Resolved', createdAt: new Date(Date.now() - 1000).toISOString(),
+        statusHistory: [
+          { historyId: 'REQ-E2E-1-OPEN', fromStatus: null, toStatus: 'Open', changedAt: new Date(Date.now() - 5000).toISOString() },
+          { historyId: 'REQ-E2E-1-PROGRESS', fromStatus: 'Open', toStatus: 'In Progress', changedAt: new Date(Date.now() - 3000).toISOString() },
+          { historyId: 'REQ-E2E-1-RESOLVED', fromStatus: 'In Progress', toStatus: 'Resolved', changedAt: new Date(Date.now() - 1000).toISOString() },
+        ],
       },
     ] });
   });
   await page.getByRole('button', { name: 'Refresh requests' }).click();
   await expect(requestHistory.locator('.request-history-card').nth(0)).toContainText('In Progress');
   await expect(requestHistory.locator('.request-history-card').nth(1)).toContainText('Resolved');
+  const resolvedTimeline = requestHistory.getByRole('list', { name: 'Status history for request REQ-E2E-1' });
+  await expect(resolvedTimeline).toContainText('Submitted as Open');
+  await expect(resolvedTimeline).toContainText('Open → In Progress');
+  await expect(resolvedTimeline).toContainText('In Progress → Resolved');
+  await expect(requestHistory.getByRole('list', { name: 'Status history for request REQ-E2E-2' })).toContainText('Open → In Progress');
   await page.getByRole('tab', { name: 'New request' }).click();
   await expect(page.getByLabel('Description')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Your requests' })).toHaveCount(0);
@@ -421,6 +437,13 @@ test('Admin can monitor requests from all departments and refresh the list', asy
   await expect(monitor).toContainText('HR request for monitoring');
   await expect(monitor).toContainText('Finance request for monitoring');
   await expect(monitor).toContainText('HR One');
+  const resolvedRequestCard = monitor.getByRole('article').filter({ hasText: 'Finance request for monitoring' });
+  await expect(resolvedRequestCard.getByRole('button', { name: 'Manage assignment' })).toBeDisabled();
+  const assignmentHelp = resolvedRequestCard.getByRole('tooltip');
+  await expect(assignmentHelp).toBeHidden();
+  await resolvedRequestCard.locator('.admin-request-manage-wrap').hover();
+  await expect(assignmentHelp).toBeVisible();
+  await expect(assignmentHelp).toHaveText('Resolved requests cannot be assigned.');
 
   await page.getByLabel('Department', { exact: true }).selectOption('DEPT-HR');
   await expect(monitor.getByRole('article')).toHaveCount(1);
