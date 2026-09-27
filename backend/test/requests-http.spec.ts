@@ -12,6 +12,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import request from 'supertest';
 import { RequestsModule } from '../src/requests/requests.module';
 import { RequestEntity } from '../src/requests/entities/request.entity';
+import { RequestStatusHistoryEntity } from '../src/requests/entities/request-status-history.entity';
 import { UserEntity } from '../src/auth/user.entity';
 import { FirebaseAuthService } from '../src/auth/firebase-auth.service';
 
@@ -24,7 +25,7 @@ describe('Requests HTTP boundaries', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [RequestEntity, UserEntity],
+          entities: [RequestEntity, RequestStatusHistoryEntity, UserEntity],
           synchronize: true,
         }),
         RequestsModule,
@@ -168,6 +169,17 @@ describe('Requests HTTP boundaries', () => {
       expect.arrayContaining(['Open', 'Resolved']),
     );
     expect(ownRequests.body.every((item: { requesterId: string }) => item.requesterId === 'EMP-OWN-LIST')).toBe(true);
+    const resolvedHistory = ownRequests.body.find((item: { id: string }) => item.id === resolvedRequest.body.id).statusHistory;
+    expect(resolvedHistory.map(({ fromStatus, toStatus }: { fromStatus: string | null; toStatus: string }) => [fromStatus, toStatus])).toEqual([
+      [null, 'Open'],
+      ['Open', 'In Progress'],
+      ['In Progress', 'Resolved'],
+    ]);
+    expect(resolvedHistory[1]).not.toHaveProperty('changedByUserId');
+    const openHistory = ownRequests.body.find((item: { id: string }) => item.id === openRequest.body.id).statusHistory;
+    expect(openHistory.map(({ fromStatus, toStatus }: { fromStatus: string | null; toStatus: string }) => [fromStatus, toStatus])).toEqual([
+      [null, 'Open'],
+    ]);
   });
 
   it('denies request-list access to Staff and Admin roles', async () => {

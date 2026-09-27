@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RequestEntity } from '../src/requests/entities/request.entity';
+import { RequestStatusHistoryEntity } from '../src/requests/entities/request-status-history.entity';
 import { UserEntity } from '../src/auth/user.entity';
 import { RequestStatus } from '../src/requests/enums/request-status.enum';
 import { RequestStateMachineService } from '../src/requests/request-state-machine.service';
@@ -19,10 +20,10 @@ describe('RequestsService database integration', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [RequestEntity, UserEntity],
+          entities: [RequestEntity, RequestStatusHistoryEntity, UserEntity],
           synchronize: true,
         }),
-        TypeOrmModule.forFeature([RequestEntity, UserEntity]),
+        TypeOrmModule.forFeature([RequestEntity, RequestStatusHistoryEntity, UserEntity]),
       ],
       providers: [RequestsService, RequestStateMachineService],
     }).compile();
@@ -107,6 +108,15 @@ describe('RequestsService database integration', () => {
     const storedResolved = await repository.findOneByOrFail({ id: created.id });
     expect(resolved.status).toBe(RequestStatus.RESOLVED);
     expect(storedResolved.status).toBe(RequestStatus.RESOLVED);
+
+    const [employeeRequest] = await service.getOwnRequests({ id: 'EMP-LIFECYCLE', role: 'Employee' });
+    expect(employeeRequest.statusHistory.map(({ fromStatus, toStatus }) => [fromStatus, toStatus])).toEqual([
+      [null, RequestStatus.OPEN],
+      [RequestStatus.OPEN, RequestStatus.IN_PROGRESS],
+      [RequestStatus.IN_PROGRESS, RequestStatus.RESOLVED],
+    ]);
+    expect(employeeRequest.statusHistory.every(({ changedAt }) => changedAt instanceof Date)).toBe(true);
+    expect(employeeRequest.statusHistory[1]).not.toHaveProperty('changedByUserId');
   });
 
   it('moves a newly claimed request above newer unclaimed requests in the department queue', async () => {
@@ -174,6 +184,12 @@ describe('RequestsService database integration', () => {
     expect(moved).toMatchObject({ departmentId: 'DEPT-HR', ownerId: null, status: RequestStatus.OPEN });
     expect((await service.getDepartmentQueue(itStaff)).map((item) => item.id)).not.toContain(request.id);
     expect((await service.getDepartmentQueue(hrStaff)).map((item) => item.id)).toContain(request.id);
+    const [employeeRequest] = await service.getOwnRequests({ id: 'EMP-WRONG-DEPARTMENT', role: 'Employee' });
+    expect(employeeRequest.statusHistory.map(({ fromStatus, toStatus }) => [fromStatus, toStatus])).toEqual([
+      [null, RequestStatus.OPEN],
+      [RequestStatus.OPEN, RequestStatus.IN_PROGRESS],
+      [RequestStatus.IN_PROGRESS, RequestStatus.OPEN],
+    ]);
   });
 
   it('returns all departments with readable owners only for Admins', async () => {

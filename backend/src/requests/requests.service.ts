@@ -7,9 +7,13 @@ import { CreateRequestDto } from './dto/create-request.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { ReassignRequestDepartmentDto } from './dto/reassign-request-department.dto';
 import { RequestEntity } from './entities/request.entity';
+import { RequestStatusHistoryEntity } from './entities/request-status-history.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { RequestStateMachineService } from './request-state-machine.service';
 import { UserEntity } from '../auth/user.entity';
+
+type RequestUpdateCriteria = Parameters<Repository<RequestEntity>['update']>[0];
+type RequestUpdateValues = Parameters<Repository<RequestEntity>['update']>[1];
 
 @Injectable()
 export class RequestsService {
@@ -18,6 +22,8 @@ export class RequestsService {
     private readonly requestsRepository: Repository<RequestEntity>,
     @InjectRepository(UserEntity)
     private readonly usersRepository: Repository<UserEntity>,
+    @InjectRepository(RequestStatusHistoryEntity)
+    private readonly statusHistoryRepository: Repository<RequestStatusHistoryEntity>,
     private readonly stateMachineService: RequestStateMachineService,
   ) {}
 
@@ -26,14 +32,25 @@ export class RequestsService {
       throw new ForbiddenException('Only employees can submit a new request in this slice.');
     }
 
-    const request = this.requestsRepository.create({
-      departmentId: dto.departmentId,
-      requesterId: user.id,
-      description: dto.description,
-      status: RequestStatus.OPEN,
-      ownerId: null,
+    return this.requestsRepository.manager.transaction(async (manager) => {
+      const requests = manager.getRepository(RequestEntity);
+      const request = await requests.save(requests.create({
+        departmentId: dto.departmentId,
+        requesterId: user.id,
+        description: dto.description,
+        status: RequestStatus.OPEN,
+        ownerId: null,
+      }));
+      const history = manager.getRepository(RequestStatusHistoryEntity);
+      await history.save(history.create({
+        requestId: request.id,
+        fromStatus: null,
+        toStatus: RequestStatus.OPEN,
+        changedByUserId: user.id,
+        changedAt: request.createdAt,
+      }));
+      return request;
     });
-    return this.requestsRepository.save(request);
   }
 
   async findOne(user: CurrentUserData, id: string): Promise<RequestEntity> {
@@ -43,13 +60,29 @@ export class RequestsService {
     return request;
   }
 
-  async getOwnRequests(user: CurrentUserData): Promise<RequestEntity[]> {
+  async getOwnRequests(user: CurrentUserData) {
     if (user.role !== 'Employee') {
       throw new ForbiddenException('Only employees can view their own requests.');
     }
-    return this.requestsRepository.find({
+    const requests = await this.requestsRepository.find({
       where: { requesterId: user.id },
+      relations: { statusHistory: true },
       order: { createdAt: 'DESC' },
+    });
+    return requests.map((request) => {
+      const { statusHistory = [], ...requestDetails } = request;
+      return {
+        ...requestDetails,
+        statusHistory: statusHistory
+          .slice()
+          .sort((left, right) => left.changedAt.getTime() - right.changedAt.getTime())
+          .map(({ historyId, fromStatus, toStatus, changedAt }) => ({
+            historyId,
+            fromStatus,
+            toStatus,
+            changedAt,
+          })),
+      };
     });
   }
 
@@ -109,7 +142,7 @@ export class RequestsService {
   async assign(user: CurrentUserData, id: string, dto: AssignRequestDto): Promise<RequestEntity> {
     const request = await this.findOne(user, id);
     if (user.role === 'Admin') {
-      return this.assignForAdmin(request, id, dto.ownerId);
+      return this.assignForAdmin(request, id, dto.ownerId, user.id);
     }
     if (user.role !== 'Staff') {
       throw new ForbiddenException('Only department staff can take ownership in this slice.');
@@ -126,7 +159,7 @@ export class RequestsService {
 
     this.stateMachineService.validateTransition(request.status, RequestStatus.IN_PROGRESS);
     const claimedAt = new Date(Math.max(Date.now(), request.updatedAt.getTime() + 1));
-    const result = await this.requestsRepository.update(
+    return this.updateWithStatusHistory(
       {
         id,
         departmentId: user.departmentId,
@@ -134,11 +167,13 @@ export class RequestsService {
         ownerId: IsNull(),
       },
       { ownerId: user.id, status: RequestStatus.IN_PROGRESS, updatedAt: claimedAt },
+      id,
+      request.status,
+      RequestStatus.IN_PROGRESS,
+      user.id,
+      claimedAt,
+      'This request was already taken or changed. Refresh the department queue.',
     );
-    if (result.affected !== 1) {
-      throw new ConflictException('This request was already taken or changed. Refresh the department queue.');
-    }
-    return this.requestsRepository.findOneByOrFail({ id });
   }
 
   async reassignDepartment(user: CurrentUserData, id: string, dto: ReassignRequestDepartmentDto): Promise<RequestEntity> {
@@ -154,22 +189,34 @@ export class RequestsService {
       throw new BadRequestException('Choose a different department for reassignment.');
     }
 
-    const result = await this.requestsRepository.update(
-      {
+    const criteria = {
+      id,
+      departmentId: request.departmentId,
+      status: request.status,
+      ownerId: request.ownerId ?? IsNull(),
+    };
+    const update = { departmentId: dto.departmentId, ownerId: null, status: RequestStatus.OPEN };
+    if (request.status !== RequestStatus.OPEN) {
+      const changedAt = new Date(Math.max(Date.now(), request.updatedAt.getTime() + 1));
+      return this.updateWithStatusHistory(
+        criteria,
+        update,
         id,
-        departmentId: request.departmentId,
-        status: request.status,
-        ownerId: request.ownerId ?? IsNull(),
-      },
-      { departmentId: dto.departmentId, ownerId: null, status: RequestStatus.OPEN },
-    );
+        request.status,
+        RequestStatus.OPEN,
+        user.id,
+        changedAt,
+        'This request changed while it was being moved. Reload it and try again.',
+      );
+    }
+    const result = await this.requestsRepository.update(criteria, update);
     if (result.affected !== 1) {
       throw new ConflictException('This request changed while it was being moved. Reload it and try again.');
     }
     return this.requestsRepository.findOneByOrFail({ id });
   }
 
-  private async assignForAdmin(request: RequestEntity, id: string, ownerId: string): Promise<RequestEntity> {
+  private async assignForAdmin(request: RequestEntity, id: string, ownerId: string, adminId: string): Promise<RequestEntity> {
     if (request.status === RequestStatus.RESOLVED) {
       throw new BadRequestException('Resolved requests cannot be assigned.');
     }
@@ -191,10 +238,24 @@ export class RequestsService {
       status: request.status,
       ownerId: request.ownerId ?? IsNull(),
     };
-    const result = await this.requestsRepository.update(criteria, {
+    const update = {
       ownerId,
       ...(request.status === RequestStatus.OPEN ? { status: RequestStatus.IN_PROGRESS } : {}),
-    });
+    };
+    if (request.status === RequestStatus.OPEN) {
+      const changedAt = new Date(Math.max(Date.now(), request.updatedAt.getTime() + 1));
+      return this.updateWithStatusHistory(
+        criteria,
+        update,
+        id,
+        RequestStatus.OPEN,
+        RequestStatus.IN_PROGRESS,
+        adminId,
+        changedAt,
+        'This request was changed by another user. Reload it before assigning staff.',
+      );
+    }
+    const result = await this.requestsRepository.update(criteria, update);
     if (result.affected !== 1) {
       throw new ConflictException('This request was changed by another user. Reload it before assigning staff.');
     }
@@ -216,18 +277,44 @@ export class RequestsService {
     }
 
     this.stateMachineService.validateTransition(request.status, dto.targetStatus);
-    const result = await this.requestsRepository.update(
+    const changedAt = new Date(Math.max(Date.now(), request.updatedAt.getTime() + 1));
+    return this.updateWithStatusHistory(
       {
         id,
         departmentId: user.departmentId,
         status: RequestStatus.IN_PROGRESS,
       },
       { status: RequestStatus.RESOLVED },
+      id,
+      RequestStatus.IN_PROGRESS,
+      RequestStatus.RESOLVED,
+      user.id,
+      changedAt,
+      'This request was changed by another staff member. Refresh the department queue.',
     );
-    if (result.affected !== 1) {
-      throw new ConflictException('This request was changed by another staff member. Refresh the department queue.');
-    }
-    return this.requestsRepository.findOneByOrFail({ id });
+  }
+
+  private async updateWithStatusHistory(
+    criteria: RequestUpdateCriteria,
+    update: RequestUpdateValues,
+    requestId: string,
+    fromStatus: RequestStatus,
+    toStatus: RequestStatus,
+    changedByUserId: string,
+    changedAt: Date,
+    conflictMessage: string,
+  ): Promise<RequestEntity> {
+    const result = await this.requestsRepository.update(criteria, { ...update, updatedAt: changedAt });
+    if (result.affected !== 1) throw new ConflictException(conflictMessage);
+
+    await this.statusHistoryRepository.save(this.statusHistoryRepository.create({
+      requestId,
+      fromStatus,
+      toStatus,
+      changedByUserId,
+      changedAt,
+    }));
+    return this.requestsRepository.findOneByOrFail({ id: requestId });
   }
 
   private assertCanAccess(user: CurrentUserData, request: RequestEntity): void {

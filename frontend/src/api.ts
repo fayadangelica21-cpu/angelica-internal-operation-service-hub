@@ -11,6 +11,14 @@ export type RequestRecord = {
   ownerDisplayName?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  statusHistory?: RequestStatusHistoryRecord[];
+};
+
+export type RequestStatusHistoryRecord = {
+  historyId: string;
+  fromStatus: string | null;
+  toStatus: string;
+  changedAt: string;
 };
 
 export type AssignableStaff = {
