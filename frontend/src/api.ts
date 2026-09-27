@@ -27,6 +27,28 @@ export type AssignableStaff = {
   displayName: string | null;
 };
 
+export type AdminWorkloadDepartment = {
+  departmentId: string;
+  activeRequestCount: number;
+  openRequestCount: number;
+  inProgressRequestCount: number;
+  unassignedRequestCount: number;
+};
+
+export type AdminWorkloadStaff = {
+  staffId: string;
+  staffName: string;
+  departmentId: string | null;
+  activeRequestCount: number;
+  openRequestCount: number;
+  inProgressRequestCount: number;
+};
+
+export type AdminWorkloadSummary = {
+  departments: AdminWorkloadDepartment[];
+  staff: AdminWorkloadStaff[];
+};
+
 export type TriageSuggestion = {
   draftId: string;
   departmentId: 'DEPT-IT' | 'DEPT-HR' | 'DEPT-FINANCE' | null;
@@ -86,6 +108,14 @@ export async function getAllRequestsForAdmin(): Promise<RequestRecord[]> {
   const body = await getAuthenticatedJson<unknown>('/requests/admin', 'The Admin request list response was invalid.');
   if (!Array.isArray(body)) throw new Error('The Admin request list response was invalid.');
   return body as RequestRecord[];
+}
+
+export async function getAdminWorkload(): Promise<AdminWorkloadSummary> {
+  const body = await getAuthenticatedJson<unknown>('/requests/admin/workload', 'The Admin workload response was invalid.');
+  if (!body || typeof body !== 'object' || !Array.isArray((body as AdminWorkloadSummary).departments) || !Array.isArray((body as AdminWorkloadSummary).staff)) {
+    throw new Error('The Admin workload response was invalid.');
+  }
+  return body as AdminWorkloadSummary;
 }
 
 export async function getDepartmentQueue(): Promise<RequestRecord[]> {

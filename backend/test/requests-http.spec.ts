@@ -106,6 +106,28 @@ describe('Requests HTTP boundaries', () => {
       .expect(403);
   });
 
+  it('allows only Admins to read workload summaries', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/requests/admin/workload')
+      .set(adminHeaders('ADMIN-WORKLOAD-HTTP'))
+      .expect(200);
+
+    expect(response.body.departments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ departmentId: 'DEPT-IT', activeRequestCount: expect.any(Number) }),
+      expect.objectContaining({ departmentId: 'DEPT-HR', activeRequestCount: expect.any(Number) }),
+      expect.objectContaining({ departmentId: 'DEPT-FINANCE', activeRequestCount: expect.any(Number) }),
+    ]));
+    expect(response.body.staff).toEqual(expect.any(Array));
+    await request(app.getHttpServer())
+      .get('/requests/admin/workload')
+      .set(employeeHeaders('EMP-WORKLOAD-HTTP'))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/requests/admin/workload')
+      .set(staffHeaders('STAFF-WORKLOAD-HTTP', 'DEPT-IT'))
+      .expect(403);
+  });
+
   it('returns 404 for a request that does not exist', async () => {
     await request(app.getHttpServer())
       .get('/requests/not-a-real-request')

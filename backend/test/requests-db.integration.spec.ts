@@ -247,4 +247,72 @@ describe('RequestsService database integration', () => {
     await expect(service.getAllRequestsForAdmin({ id: 'STAFF-IT-LIST', role: 'Staff', departmentId: 'DEPT-IT' }))
       .rejects.toThrow('Only Admins can view requests across all departments.');
   });
+
+  it('aggregates active workload by department and Staff member while excluding resolved requests', async () => {
+    await usersRepository.save([
+      { id: 'STAFF-WORKLOAD-IT', email: 'it.workload@example.test', displayName: 'IT Workload', role: 'Staff', departmentId: 'DEPT-IT' },
+      { id: 'STAFF-WORKLOAD-HR', email: 'hr.workload@example.test', displayName: 'HR Workload', role: 'Staff', departmentId: 'DEPT-HR' },
+    ]);
+
+    const before = await service.getAdminWorkload({ id: 'ADMIN-WORKLOAD', role: 'Admin' });
+    const unassignedItRequests = [];
+    for (const index of [1, 2]) {
+      unassignedItRequests.push(await service.create(
+        { id: `EMP-WORKLOAD-IT-OPEN-${index}`, role: 'Employee' },
+        { departmentId: 'DEPT-IT', description: `Unassigned IT workload ${index}` },
+      ));
+    }
+    const assignedItRequests = [];
+    for (const index of [1, 2]) {
+      assignedItRequests.push(await service.create(
+        { id: `EMP-WORKLOAD-IT-ACTIVE-${index}`, role: 'Employee' },
+        { departmentId: 'DEPT-IT', description: `Assigned IT workload ${index}` },
+      ));
+    }
+    for (const item of assignedItRequests) {
+      await service.assign({ id: 'ADMIN-WORKLOAD', role: 'Admin' }, item.id, { ownerId: 'STAFF-WORKLOAD-IT' });
+    }
+    const unassignedHrRequest = await service.create(
+      { id: 'EMP-WORKLOAD-HR-OPEN', role: 'Employee' },
+      { departmentId: 'DEPT-HR', description: 'Unassigned HR workload' },
+    );
+    const resolvedFinanceRequest = await service.create(
+      { id: 'EMP-WORKLOAD-FINANCE-RESOLVED', role: 'Employee' },
+      { departmentId: 'DEPT-FINANCE', description: 'Resolved workload must not be counted' },
+    );
+    const financeStaff = { id: 'STAFF-WORKLOAD-FINANCE', role: 'Staff' as const, departmentId: 'DEPT-FINANCE' };
+    await service.assign(financeStaff, resolvedFinanceRequest.id, { ownerId: financeStaff.id });
+    await service.transitionStatus(financeStaff, resolvedFinanceRequest.id, { targetStatus: RequestStatus.RESOLVED });
+
+    const workload = await service.getAdminWorkload({ id: 'ADMIN-WORKLOAD', role: 'Admin' });
+    const itBefore = before.departments.find((item) => item.departmentId === 'DEPT-IT')!;
+    const itAfter = workload.departments.find((item) => item.departmentId === 'DEPT-IT')!;
+    expect(itAfter).toMatchObject({
+      activeRequestCount: itBefore.activeRequestCount + unassignedItRequests.length + assignedItRequests.length,
+      openRequestCount: itBefore.openRequestCount + unassignedItRequests.length,
+      inProgressRequestCount: itBefore.inProgressRequestCount + assignedItRequests.length,
+      unassignedRequestCount: itBefore.unassignedRequestCount + unassignedItRequests.length,
+    });
+    const hrBefore = before.departments.find((item) => item.departmentId === 'DEPT-HR')!;
+    const hrAfter = workload.departments.find((item) => item.departmentId === 'DEPT-HR')!;
+    expect(hrAfter).toMatchObject({
+      activeRequestCount: hrBefore.activeRequestCount + 1,
+      openRequestCount: hrBefore.openRequestCount + 1,
+      unassignedRequestCount: hrBefore.unassignedRequestCount + 1,
+    });
+    const itStaff = workload.staff.find((item) => item.staffId === 'STAFF-WORKLOAD-IT')!;
+    expect(itStaff).toMatchObject({
+      staffName: 'IT Workload',
+      departmentId: 'DEPT-IT',
+      activeRequestCount: 2,
+      inProgressRequestCount: 2,
+    });
+    expect(workload.staff.find((item) => item.staffId === 'STAFF-WORKLOAD-HR')).toMatchObject({
+      staffName: 'HR Workload',
+      activeRequestCount: 0,
+    });
+    expect(workload.departments.find((item) => item.departmentId === 'DEPT-FINANCE')).toMatchObject(
+      before.departments.find((item) => item.departmentId === 'DEPT-FINANCE'),
+    );
+  });
 });

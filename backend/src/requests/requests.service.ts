@@ -14,6 +14,14 @@ import { UserEntity } from '../auth/user.entity';
 
 type RequestUpdateCriteria = Parameters<Repository<RequestEntity>['update']>[0];
 type RequestUpdateValues = Parameters<Repository<RequestEntity>['update']>[1];
+const WORKLOAD_DEPARTMENTS = ['DEPT-IT', 'DEPT-HR', 'DEPT-FINANCE'] as const;
+
+type WorkloadCountRow = {
+  departmentId: string;
+  ownerId: string | null;
+  status: RequestStatus;
+  requestCount: string | number;
+};
 
 @Injectable()
 export class RequestsService {
@@ -104,6 +112,81 @@ export class RequestsService {
     return requests.map((request) => Object.assign(request, {
       ownerDisplayName: request.ownerId ? ownerNames.get(request.ownerId) || request.ownerId : null,
     }));
+  }
+
+  async getAdminWorkload(user: CurrentUserData) {
+    if (user.role !== 'Admin') {
+      throw new ForbiddenException('Only Admins can view workload across all departments.');
+    }
+
+    const rows = await this.requestsRepository.createQueryBuilder('request')
+      .select('request.departmentId', 'departmentId')
+      .addSelect('request.ownerId', 'ownerId')
+      .addSelect('request.status', 'status')
+      .addSelect('COUNT(request.id)', 'requestCount')
+      .where('request.status IN (:...activeStatuses)', {
+        activeStatuses: [RequestStatus.OPEN, RequestStatus.IN_PROGRESS],
+      })
+      .groupBy('request.departmentId')
+      .addGroupBy('request.ownerId')
+      .addGroupBy('request.status')
+      .getRawMany<WorkloadCountRow>();
+
+    const departmentIds = new Set<string>(WORKLOAD_DEPARTMENTS);
+    rows.forEach((row) => departmentIds.add(row.departmentId));
+    const departmentWorkload = new Map([...departmentIds].map((departmentId) => [departmentId, {
+      departmentId,
+      activeRequestCount: 0,
+      openRequestCount: 0,
+      inProgressRequestCount: 0,
+      unassignedRequestCount: 0,
+    }]));
+
+    const staffProfiles = await this.usersRepository.find({
+      where: { role: 'Staff' },
+      select: { id: true, displayName: true, email: true, departmentId: true },
+      order: { displayName: 'ASC', email: 'ASC', id: 'ASC' },
+    });
+    const staffWorkload = new Map(staffProfiles.map((staff) => [staff.id, {
+      staffId: staff.id,
+      staffName: staff.displayName || staff.email || staff.id,
+      departmentId: staff.departmentId,
+      activeRequestCount: 0,
+      openRequestCount: 0,
+      inProgressRequestCount: 0,
+    }]));
+
+    for (const row of rows) {
+      const requestCount = Number(row.requestCount);
+      const department = departmentWorkload.get(row.departmentId)!;
+      department.activeRequestCount += requestCount;
+      if (row.status === RequestStatus.OPEN) department.openRequestCount += requestCount;
+      if (row.status === RequestStatus.IN_PROGRESS) department.inProgressRequestCount += requestCount;
+      if (!row.ownerId) department.unassignedRequestCount += requestCount;
+
+      if (row.ownerId) {
+        let staff = staffWorkload.get(row.ownerId);
+        if (!staff) {
+          staff = {
+            staffId: row.ownerId,
+            staffName: row.ownerId,
+            departmentId: row.departmentId,
+            activeRequestCount: 0,
+            openRequestCount: 0,
+            inProgressRequestCount: 0,
+          };
+          staffWorkload.set(row.ownerId, staff);
+        }
+        staff.activeRequestCount += requestCount;
+        if (row.status === RequestStatus.OPEN) staff.openRequestCount += requestCount;
+        if (row.status === RequestStatus.IN_PROGRESS) staff.inProgressRequestCount += requestCount;
+      }
+    }
+
+    return {
+      departments: [...departmentWorkload.values()],
+      staff: [...staffWorkload.values()],
+    };
   }
 
   async getDepartmentQueue(user: CurrentUserData): Promise<RequestEntity[]> {

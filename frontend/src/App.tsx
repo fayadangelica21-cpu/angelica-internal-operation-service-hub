@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { assignRequestToStaff, AssignableStaff, createRequest, getAllRequestsForAdmin, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, reassignRequestDepartment, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
+import { AdminWorkloadSummary, assignRequestToStaff, AssignableStaff, createRequest, getAdminWorkload, getAllRequestsForAdmin, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, reassignRequestDepartment, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -66,6 +66,9 @@ function RequestApp() {
   const [adminRequestsLoading, setAdminRequestsLoading] = useState(false);
   const [adminRequestsError, setAdminRequestsError] = useState('');
   const [adminRequestsNotice, setAdminRequestsNotice] = useState('');
+  const [adminWorkload, setAdminWorkload] = useState<AdminWorkloadSummary>({ departments: [], staff: [] });
+  const [adminWorkloadLoading, setAdminWorkloadLoading] = useState(false);
+  const [adminWorkloadError, setAdminWorkloadError] = useState('');
   const adminRequestsRefreshId = useRef(0);
   const [adminDepartmentFilter, setAdminDepartmentFilter] = useState('ALL');
   const [assignmentRequest, setAssignmentRequest] = useState<RequestRecord | null>(null);
@@ -76,7 +79,7 @@ function RequestApp() {
   const [assignmentError, setAssignmentError] = useState('');
   const [assignmentSuccess, setAssignmentSuccess] = useState('');
   const [targetDepartmentId, setTargetDepartmentId] = useState('');
-  const [adminScreen, setAdminScreen] = useState<'monitor' | 'assignment'>('monitor');
+  const [adminScreen, setAdminScreen] = useState<'monitor' | 'workload' | 'assignment'>('monitor');
   const adminAssignmentLoadId = useRef(0);
 
   async function refreshOwnRequests(silent = false) {
@@ -103,14 +106,22 @@ function RequestApp() {
 
   async function refreshAdminRequests(silent = false) {
     const refreshId = ++adminRequestsRefreshId.current;
-    if (!silent) setAdminRequestsLoading(true);
+    if (!silent) {
+      setAdminRequestsLoading(true);
+      setAdminWorkloadLoading(true);
+    }
     setAdminRequestsError('');
     setAdminRequestsNotice('');
-    try {
-      const nextRequests = await getAllRequestsForAdmin();
-      if (refreshId === adminRequestsRefreshId.current) setAdminRequests(nextRequests);
-    } catch (err) {
-      if (refreshId === adminRequestsRefreshId.current) {
+    setAdminWorkloadError('');
+    const [requestsResult, workloadResult] = await Promise.allSettled([
+      getAllRequestsForAdmin(),
+      getAdminWorkload(),
+    ]);
+    if (refreshId === adminRequestsRefreshId.current) {
+      if (requestsResult.status === 'fulfilled') {
+        setAdminRequests(requestsResult.value);
+      } else {
+        const err = requestsResult.reason;
         const message = err instanceof Error ? err.message : 'Unable to load requests across departments.';
         if (silent || adminRequests.length > 0) {
           setAdminRequestsNotice('Could not refresh all requests. The displayed list is unchanged; please try again.');
@@ -118,8 +129,16 @@ function RequestApp() {
           setAdminRequestsError(message);
         }
       }
-    } finally {
-      if (!silent && refreshId === adminRequestsRefreshId.current) setAdminRequestsLoading(false);
+      if (workloadResult.status === 'fulfilled') {
+        setAdminWorkload(workloadResult.value);
+      } else {
+        const err = workloadResult.reason;
+        setAdminWorkloadError(err instanceof Error ? err.message : 'Unable to load staff workload.');
+      }
+      if (!silent) {
+        setAdminRequestsLoading(false);
+        setAdminWorkloadLoading(false);
+      }
     }
   }
 
@@ -203,6 +222,7 @@ function RequestApp() {
         ? { ...updatedRequest, ownerDisplayName: selectedStaff?.displayName || selectedStaff?.email || updatedRequest.ownerId || null }
         : item));
       setAssignmentSuccess(wasAssigned ? 'Request reassigned successfully.' : 'Request assigned successfully.');
+      void refreshAdminRequests(true);
     } catch (err) {
       setAssignmentError(err instanceof Error ? err.message : 'Unable to assign this request.');
     } finally {
@@ -225,6 +245,7 @@ function RequestApp() {
       setTargetDepartmentId('');
       setSelectedAssigneeId('');
       setAssignmentSuccess(`Request moved to ${getDepartmentLabel(updatedRequest.departmentId)} and returned to the Open queue.`);
+      void refreshAdminRequests(true);
       try {
         setAssignableStaff(await getAssignableStaff(updatedRequest.id));
       } catch {
@@ -273,6 +294,9 @@ function RequestApp() {
       setAdminRequestsLoading(false);
       setAdminRequestsError('');
       setAdminRequestsNotice('');
+      setAdminWorkload({ departments: [], staff: [] });
+      setAdminWorkloadLoading(false);
+      setAdminWorkloadError('');
       setAdminDepartmentFilter('ALL');
       setAdminScreen('monitor');
       adminAssignmentLoadId.current += 1;
@@ -317,6 +341,18 @@ function RequestApp() {
       ? adminRequests
       : adminRequests.filter((item) => item.departmentId === adminDepartmentFilter),
     [adminDepartmentFilter, adminRequests],
+  );
+  const visibleWorkloadDepartments = useMemo(
+    () => adminDepartmentFilter === 'ALL'
+      ? adminWorkload.departments
+      : adminWorkload.departments.filter((item) => item.departmentId === adminDepartmentFilter),
+    [adminDepartmentFilter, adminWorkload.departments],
+  );
+  const visibleWorkloadStaff = useMemo(
+    () => adminDepartmentFilter === 'ALL'
+      ? adminWorkload.staff
+      : adminWorkload.staff.filter((item) => item.departmentId === adminDepartmentFilter),
+    [adminDepartmentFilter, adminWorkload.staff],
   );
   const helperText = useMemo(() => {
     if (!description.trim()) {
@@ -414,6 +450,13 @@ function RequestApp() {
                 <button
                   className="btn btn-secondary"
                   type="button"
+                  onClick={() => setAdminScreen('workload')}
+                >
+                  View workload
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
                   onClick={() => void refreshAdminRequests()}
                   disabled={adminRequestsLoading}
                   aria-busy={adminRequestsLoading}
@@ -486,6 +529,84 @@ function RequestApp() {
                   </span>
                 </article>
               ))}
+            </div>
+          </section>
+          ) : adminScreen === 'workload' ? (
+          <section className="panel admin-workload-panel" aria-label="Workload overview">
+            <div className="queue-heading">
+              <div>
+                <p className="eyebrow">Admin workspace</p>
+                <h1>Workload overview</h1>
+              </div>
+              <div className="admin-monitor-actions">
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={() => void refreshAdminRequests()}
+                  disabled={adminRequestsLoading}
+                  aria-busy={adminRequestsLoading}
+                >
+                  {adminRequestsLoading ? 'Refreshing…' : 'Refresh workload'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={returnToAdminMonitor}>Back to requests</button>
+              </div>
+            </div>
+            <p className="auth-intro">Active workload includes Open and In Progress requests; resolved requests are excluded.</p>
+            <div className="admin-workload-toolbar">
+              <div className="field-group">
+                <label className="field-label" htmlFor="admin-department-filter">Department</label>
+                <select
+                  id="admin-department-filter"
+                  value={adminDepartmentFilter}
+                  onChange={(event) => setAdminDepartmentFilter(event.target.value)}
+                >
+                  <option value="ALL">All departments</option>
+                  {DEPARTMENTS.map((department) => (
+                    <option key={department.id} value={department.id}>{department.label}</option>
+                  ))}
+                </select>
+              </div>
+              {adminWorkloadLoading && <span role="status">Loading workload…</span>}
+            </div>
+            <div className="admin-workload-content">
+            {adminWorkloadError && <div className="error-box" role="alert">{adminWorkloadError}</div>}
+            <div className="admin-department-workload-list">
+              {visibleWorkloadDepartments.map((item) => (
+                <article className="admin-department-workload" key={item.departmentId}>
+                  <h2>{getDepartmentLabel(item.departmentId)}</h2>
+                  <strong>{item.activeRequestCount}</strong>
+                  <span>active requests</span>
+                  <small>{item.unassignedRequestCount} unassigned</small>
+                  <small>{item.openRequestCount} Open · {item.inProgressRequestCount} In Progress</small>
+                </article>
+              ))}
+            </div>
+            <section className="admin-staff-workload" aria-label="Staff workload">
+              <h2>Staff workload</h2>
+              {!adminWorkloadLoading && !adminWorkloadError && visibleWorkloadStaff.length === 0 ? (
+                <p className="request-history-empty">No registered Staff members in this view.</p>
+              ) : (
+                <div className="admin-workload-table-wrap">
+                  <table className="admin-workload-table">
+                    <caption>Active requests assigned to Staff members</caption>
+                    <thead>
+                      <tr><th scope="col">Staff member</th><th scope="col">Department</th><th scope="col">Active</th><th scope="col">Open</th><th scope="col">In progress</th></tr>
+                    </thead>
+                    <tbody>
+                      {visibleWorkloadStaff.map((item) => (
+                        <tr key={item.staffId}>
+                          <th scope="row">{item.staffName}</th>
+                          <td>{getDepartmentLabel(item.departmentId)}</td>
+                          <td>{item.activeRequestCount}</td>
+                          <td>{item.openRequestCount}</td>
+                          <td>{item.inProgressRequestCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
             </div>
           </section>
           ) : (

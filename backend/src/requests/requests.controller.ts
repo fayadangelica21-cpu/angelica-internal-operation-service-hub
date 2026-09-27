@@ -28,6 +28,11 @@ export class RequestsController {
     return this.requestsService.getAllRequestsForAdmin(user);
   }
 
+  @Get('admin/workload')
+  getAdminWorkload(@CurrentUser() user: CurrentUserData) {
+    return this.requestsService.getAdminWorkload(user);
+  }
+
   @Get('queue')
   getDepartmentQueue(@CurrentUser() user: CurrentUserData) {
     return this.requestsService.getDepartmentQueue(user);
