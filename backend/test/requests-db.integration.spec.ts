@@ -155,4 +155,24 @@ describe('RequestsService database integration', () => {
       'Choose a Staff member assigned to the request department.',
     );
   });
+
+  it('moves an active request to its new department queue and releases its previous owner', async () => {
+    const request = await service.create(
+      { id: 'EMP-WRONG-DEPARTMENT', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Request needs HR support' },
+    );
+    const itStaff = { id: 'STAFF-IT-MOVE', role: 'Staff' as const, departmentId: 'DEPT-IT' };
+    const hrStaff = { id: 'STAFF-HR-MOVE', role: 'Staff' as const, departmentId: 'DEPT-HR' };
+    await service.assign(itStaff, request.id, { ownerId: itStaff.id });
+
+    const moved = await service.reassignDepartment(
+      { id: 'ADMIN-MOVE', role: 'Admin' },
+      request.id,
+      { departmentId: 'DEPT-HR' },
+    );
+
+    expect(moved).toMatchObject({ departmentId: 'DEPT-HR', ownerId: null, status: RequestStatus.OPEN });
+    expect((await service.getDepartmentQueue(itStaff)).map((item) => item.id)).not.toContain(request.id);
+    expect((await service.getDepartmentQueue(hrStaff)).map((item) => item.id)).toContain(request.id);
+  });
 });
