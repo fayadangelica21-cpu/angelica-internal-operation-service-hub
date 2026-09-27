@@ -22,6 +22,7 @@ Open → In Progress → Resolved
 - NestJS API with an explicit contract
 - SQLite persistence through TypeORM
 - Firebase-authenticated Staff can view active requests in their assigned department; the backend derives the department from the verified identity
+- Admins can assign or reassign a request to a Staff account in that request's department
 - Employees can view their own submitted requests and current statuses; the backend scopes the list to the verified Firebase UID
 - Backend-controlled AI triage step via `POST /triage` with a strict fixed JSON response contract
 - AI payload is bounded to only the information needed for triage; the backend validates the response before showing it
@@ -96,7 +97,7 @@ UI: `http://localhost:5173`
 
 The Firebase web-app settings have defaults in `frontend/src/auth.tsx`, so no frontend environment file is required for this project configuration. The Vite development server proxies API calls to `http://localhost:3001`. Enable Email/Password in Firebase Authentication before testing signup and login.
 
-Employees can create accounts from the app. Create Staff/Admin accounts in Firebase, copy each account's UID, then add its UID, role, and (for Staff) department to backend `FIREBASE_ROLE_ASSIGNMENTS`. The app shows the request form only to Employees; Staff/Admin sign in but see an access page until their role-specific feature is built.
+Employees can create accounts from the app. Create Staff/Admin accounts in Firebase, copy each account's UID, then add its UID, role, and (for Staff) department to backend `FIREBASE_ROLE_ASSIGNMENTS`. Staff accounts are added to the local SQLite user table when they sign in; Admins can assign requests to those registered Staff accounts in the same department.
 
 ### Stop the project
 
@@ -264,6 +265,17 @@ GET /requests/:id
 Both actions require Staff authorization for the request's department. Invalid lifecycle transitions are rejected, and a competing claim cannot replace an existing owner; refresh the queue if another Staff member takes the request first.
 After a successful claim, the request moves to the top of the department queue.
 
+### Assign a request (Admin)
+
+Admins can look up an individual request by ID, then assign or reassign it to a Staff member in that request's department. The staff options come from local SQLite profiles created when Staff sign in. The backend enforces the role and same-department rules, regardless of the submitted owner ID.
+
+```http
+GET /requests/:id/assignees
+Authorization: Bearer <ADMIN_FIREBASE_ID_TOKEN>
+```
+
+Returns eligible Staff profiles for that request's department. Admins can assign an unassigned `Open` request or reassign an `In Progress` request with `PATCH /requests/:id/assign` and `{ "ownerId": "<staff Firebase UID>" }`. Assigning an `Open` request moves it to `In Progress`; reassignment preserves its current status. Resolved requests cannot be assigned. Staff can still take ownership of an unassigned request through the same PATCH route, but cannot reassign an existing owner.
+
 ---
 
 ## Boundary checks (curl)
@@ -358,7 +370,7 @@ npm run test:all
 | Command | What it proves |
 |---|---|
 | `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
-| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering and Staff claim/resolve actions. |
+| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering, Staff claim/resolve actions, and Admin assignment rules. |
 | `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
 | `npm run test:all` | All backend tests |
 
@@ -371,7 +383,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, and Staff processing a request from `Open` through `In Progress` to `Resolved`, including the short fade-and-slide as a resolved request leaves the queue while other queue cards stay visible. It also verifies that a claimed request moves to the top, and that a competing claim is reported so Staff can refresh the queue and see the updated state. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin assignment/reassignment to Staff in the request's department. The Admin assignment test also verifies that **New lookup** clears the current request ID, selected request, and success message so the Admin can start another lookup without signing out. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
