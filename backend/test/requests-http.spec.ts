@@ -76,16 +76,34 @@ describe('Requests HTTP boundaries', () => {
       .expect(400);
   });
 
+  it('requires a valid expected resolution date and time on request submission', async () => {
+    await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-DATE-REQUIRED'))
+      .send({ departmentId: 'DEPT-IT', description: 'Request without an expected date' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-DATE-ONLY'))
+      .send({ departmentId: 'DEPT-IT', description: 'Request without an expected time', expectedResolutionDate: '2026-10-15' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-DATE-INVALID'))
+      .send({ departmentId: 'DEPT-IT', description: 'Invalid expected date', expectedResolutionDate: '2026-02-30' })
+      .expect(400);
+  });
+
   it('lets Admins view requests across departments and denies that list to other roles', async () => {
     const itRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-ADMIN-OVERVIEW-IT'))
-      .send({ departmentId: 'DEPT-IT', description: 'Admin overview IT request' })
+      .send({ departmentId: 'DEPT-IT', description: 'Admin overview IT request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
     const hrRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-ADMIN-OVERVIEW-HR'))
-      .send({ departmentId: 'DEPT-HR', description: 'Admin overview HR request' })
+      .send({ departmentId: 'DEPT-HR', description: 'Admin overview HR request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     const response = await request(app.getHttpServer())
@@ -141,28 +159,29 @@ describe('Requests HTTP boundaries', () => {
       .set(employeeHeaders('EMP-001'))
       .set('x-user-id', 'EMP-SPOOFED')
       .set('x-user-role', 'Admin')
-      .send({ departmentId: 'DEPT-IT', description: 'Laptop screen flickers' })
+      .send({ departmentId: 'DEPT-IT', description: 'Laptop screen flickers', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     expect(response.body.requesterId).toBe('EMP-001');
     expect(response.body.status).toBe('Open');
+    expect(response.body.expectedResolutionDate).toBe('2026-10-15T17:30:00.000Z');
   });
 
   it('lists only the authenticated employee’s requests and includes their resolved requests', async () => {
     const resolvedRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-OWN-LIST'))
-      .send({ departmentId: 'DEPT-IT', description: 'My resolved request' })
+      .send({ departmentId: 'DEPT-IT', description: 'My resolved request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
     const openRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-OWN-LIST'))
-      .send({ departmentId: 'DEPT-FINANCE', description: 'My open request' })
+      .send({ departmentId: 'DEPT-FINANCE', description: 'My open request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
     const privateRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-OTHER-LIST'))
-      .send({ departmentId: 'DEPT-HR', description: 'Another employee’s private request' })
+      .send({ departmentId: 'DEPT-HR', description: 'Another employee’s private request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -219,7 +238,7 @@ describe('Requests HTTP boundaries', () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-001'))
-      .send({ departmentId: 'DEPT-IT', description: 'Need a replacement keyboard' })
+      .send({ departmentId: 'DEPT-IT', description: 'Need a replacement keyboard', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -232,12 +251,12 @@ describe('Requests HTTP boundaries', () => {
     const itRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-PRIVACY-IT'))
-      .send({ departmentId: 'DEPT-IT', description: 'Private IT request' })
+      .send({ departmentId: 'DEPT-IT', description: 'Private IT request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
     const hrRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-PRIVACY-HR'))
-      .send({ departmentId: 'DEPT-HR', description: 'Private HR request' })
+      .send({ departmentId: 'DEPT-HR', description: 'Private HR request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -270,7 +289,7 @@ describe('Requests HTTP boundaries', () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-TAKE-OWNER'))
-      .send({ departmentId: 'DEPT-IT', description: 'Request for ownership validation' })
+      .send({ departmentId: 'DEPT-IT', description: 'Request for ownership validation', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -317,7 +336,7 @@ describe('Requests HTTP boundaries', () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-ADMIN-ASSIGN'))
-      .send({ departmentId: 'DEPT-HR', description: 'Request for Admin assignment' })
+      .send({ departmentId: 'DEPT-HR', description: 'Request for Admin assignment', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     for (const staff of [
@@ -370,7 +389,7 @@ describe('Requests HTTP boundaries', () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-DEPT-MOVE'))
-      .send({ departmentId: 'DEPT-IT', description: 'Request routed to the wrong department' })
+      .send({ departmentId: 'DEPT-IT', description: 'Request routed to the wrong department', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -423,7 +442,7 @@ describe('Requests HTTP boundaries', () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-RESOLVE-VALIDATION'))
-      .send({ departmentId: 'DEPT-IT', description: 'Request for resolution validation' })
+      .send({ departmentId: 'DEPT-IT', description: 'Request for resolution validation', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -465,7 +484,7 @@ describe('Requests HTTP boundaries', () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-CONCURRENT-CLAIM'))
-      .send({ departmentId: 'DEPT-IT', description: 'Request for concurrent claim test' })
+      .send({ departmentId: 'DEPT-IT', description: 'Request for concurrent claim test', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     const results = await Promise.all([
@@ -495,17 +514,17 @@ describe('Requests HTTP boundaries', () => {
     const itRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-021'))
-      .send({ departmentId: 'DEPT-IT', description: 'IT queue item that should appear' })
+      .send({ departmentId: 'DEPT-IT', description: 'IT queue item that should appear', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
     const hrRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-020'))
-      .send({ departmentId: 'DEPT-HR', description: 'HR queue item that must stay private' })
+      .send({ departmentId: 'DEPT-HR', description: 'HR queue item that must stay private', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
     const resolvedRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-022'))
-      .send({ departmentId: 'DEPT-IT', description: 'Resolved IT request' })
+      .send({ departmentId: 'DEPT-IT', description: 'Resolved IT request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -552,7 +571,7 @@ describe('Requests HTTP boundaries', () => {
       .post('/requests')
       .set('x-user-id', 'EMP-001')
       .set('x-user-role', 'Employee')
-      .send({ departmentId: 'DEPT-IT', description: 'Need a mouse' })
+      .send({ departmentId: 'DEPT-IT', description: 'Need a mouse', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
       .expect(401);
   });
 
