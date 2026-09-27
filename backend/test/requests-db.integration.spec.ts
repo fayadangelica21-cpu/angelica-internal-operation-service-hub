@@ -65,6 +65,31 @@ describe('RequestsService database integration', () => {
     expect(ownRequests.every((request) => request.requesterId === 'EMP-OWN-LIST')).toBe(true);
   });
 
+  it('enforces database-backed request detail access by requester, department, and Admin role', async () => {
+    const itRequest = await service.create(
+      { id: 'EMP-DETAIL-IT', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Private IT detail record' },
+    );
+    const hrRequest = await service.create(
+      { id: 'EMP-DETAIL-HR', role: 'Employee' },
+      { departmentId: 'DEPT-HR', description: 'Private HR detail record' },
+    );
+
+    await expect(service.findOne({ id: 'EMP-DETAIL-IT', role: 'Employee' }, itRequest.id)).resolves.toMatchObject({
+      id: itRequest.id,
+    });
+    await expect(service.findOne({ id: 'EMP-DETAIL-HR', role: 'Employee' }, itRequest.id)).rejects.toThrow();
+    await expect(service.findOne({ id: 'STAFF-DETAIL-IT', role: 'Staff', departmentId: 'DEPT-IT' }, itRequest.id))
+      .resolves.toMatchObject({ id: itRequest.id });
+    await expect(service.findOne({ id: 'STAFF-DETAIL-HR', role: 'Staff', departmentId: 'DEPT-HR' }, itRequest.id))
+      .rejects.toThrow();
+    await expect(service.findOne({ id: 'STAFF-DETAIL-IT', role: 'Staff', departmentId: 'DEPT-IT' }, hrRequest.id))
+      .rejects.toThrow();
+    await expect(service.findOne({ id: 'ADMIN-DETAIL', role: 'Admin' }, hrRequest.id)).resolves.toMatchObject({
+      id: hrRequest.id,
+    });
+  });
+
   it('queries the active queue using the authenticated Staff department', async () => {
     const itRequest = await service.create(
       { id: 'EMP-IT-QUEUE', role: 'Employee' },

@@ -206,6 +206,44 @@ describe('Requests HTTP boundaries', () => {
       .expect(403);
   });
 
+  it('enforces request detail privacy by requester, Staff department, and Admin role', async () => {
+    const itRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-PRIVACY-IT'))
+      .send({ departmentId: 'DEPT-IT', description: 'Private IT request' })
+      .expect(201);
+    const hrRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-PRIVACY-HR'))
+      .send({ departmentId: 'DEPT-HR', description: 'Private HR request' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/requests/${itRequest.body.id}`)
+      .set(employeeHeaders('EMP-PRIVACY-IT'))
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/requests/${itRequest.body.id}`)
+      .set(employeeHeaders('EMP-PRIVACY-HR'))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`/requests/${itRequest.body.id}`)
+      .set(staffHeaders('STAFF-PRIVACY-IT', 'DEPT-IT'))
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/requests/${itRequest.body.id}`)
+      .set(staffHeaders('STAFF-PRIVACY-HR', 'DEPT-HR'))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`/requests/${hrRequest.body.id}`)
+      .set(staffHeaders('STAFF-PRIVACY-IT', 'DEPT-IT'))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`/requests/${hrRequest.body.id}`)
+      .set({ Authorization: 'Bearer test:ADMIN-PRIVACY:Admin' })
+      .expect(200);
+  });
+
   it('validates take-ownership payloads and limits ownership to the signed-in Staff member', async () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
