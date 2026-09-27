@@ -38,6 +38,11 @@ export class RequestsController {
     return this.requestsService.getDepartmentQueue(user);
   }
 
+  @Get('queue/overdue')
+  getOverdueDepartmentQueue(@CurrentUser() user: CurrentUserData) {
+    return this.requestsService.getOverdueDepartmentQueue(user);
+  }
+
   @Get(':id/assignees')
   getAssignableStaff(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
     return this.requestsService.getAssignableStaff(user, id);

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AdminWorkloadSummary, assignRequestToStaff, AssignableStaff, createRequest, getAdminWorkload, getAllRequestsForAdmin, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, reassignRequestDepartment, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
+import { AdminWorkloadSummary, assignRequestToStaff, AssignableStaff, createRequest, getAdminWorkload, getAllRequestsForAdmin, getAssignableStaff, getDepartmentOverdueQueue, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, reassignRequestDepartment, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -79,6 +79,10 @@ function RequestApp() {
   const [queueNotice, setQueueNotice] = useState('');
   const [queueActionId, setQueueActionId] = useState<string | null>(null);
   const [queueRemovingId, setQueueRemovingId] = useState<string | null>(null);
+  const [showOverdueQueue, setShowOverdueQueue] = useState(false);
+  const [overdueQueue, setOverdueQueue] = useState<RequestRecord[]>([]);
+  const [overdueQueueLoading, setOverdueQueueLoading] = useState(false);
+  const [overdueQueueError, setOverdueQueueError] = useState('');
   const [ownRequests, setOwnRequests] = useState<RequestRecord[]>([]);
   const [ownRequestsLoading, setOwnRequestsLoading] = useState(false);
   const [ownRequestsError, setOwnRequestsError] = useState('');
@@ -178,6 +182,28 @@ function RequestApp() {
       }
     } finally {
       if (!silent) setQueueLoading(false);
+    }
+  }
+
+  async function refreshOverdueDepartmentQueue() {
+    setOverdueQueueLoading(true);
+    setOverdueQueueError('');
+    try {
+      setOverdueQueue(await getDepartmentOverdueQueue());
+    } catch (err) {
+      setOverdueQueueError(err instanceof Error ? err.message : 'Unable to load overdue requests.');
+    } finally {
+      setOverdueQueueLoading(false);
+    }
+  }
+
+  function toggleOverdueQueue() {
+    if (showOverdueQueue) {
+      setShowOverdueQueue(false);
+      void refreshDepartmentQueue();
+    } else {
+      setShowOverdueQueue(true);
+      void refreshOverdueDepartmentQueue();
     }
   }
 
@@ -365,6 +391,7 @@ function RequestApp() {
       : adminRequests.filter((item) => item.departmentId === adminDepartmentFilter),
     [adminDepartmentFilter, adminRequests],
   );
+  const dueSoonRequestCount = adminRequests.filter((item) => item.deadlineStatus === 'due-soon').length;
   const visibleWorkloadDepartments = useMemo(
     () => adminDepartmentFilter === 'ALL'
       ? adminWorkload.departments
@@ -389,37 +416,78 @@ function RequestApp() {
             <div className="queue-heading">
               <div>
                 <p className="eyebrow">Staff workspace</p>
-                <h1>{getDepartmentLabel(user.departmentId ?? null)} request queue</h1>
+                <h1>{showOverdueQueue ? 'Overdue requests' : `${getDepartmentLabel(user.departmentId ?? null)} request queue`}</h1>
               </div>
               <div className="admin-monitor-actions">
                 <button
                   className="btn btn-secondary refresh-queue-button"
                   type="button"
-                  onClick={() => void refreshDepartmentQueue()}
-                  disabled={queueLoading || queueActionId !== null}
-                  aria-busy={queueLoading}
+                  onClick={() => void (showOverdueQueue ? refreshOverdueDepartmentQueue() : refreshDepartmentQueue())}
+                  disabled={(showOverdueQueue ? overdueQueueLoading : queueLoading) || queueActionId !== null}
+                  aria-busy={showOverdueQueue ? overdueQueueLoading : queueLoading}
                 >
-                  {queueLoading ? <><span className="queue-refresh-spinner" aria-hidden="true" />Refreshing queue…</> : 'Refresh queue'}
+                  {(showOverdueQueue ? overdueQueueLoading : queueLoading)
+                    ? <><span className="queue-refresh-spinner" aria-hidden="true" />Refreshing…</>
+                    : showOverdueQueue ? 'Refresh overdue' : 'Refresh queue'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={toggleOverdueQueue}>
+                  {showOverdueQueue ? 'Back' : 'Weekly overdue'}
                 </button>
                 <button className="btn btn-secondary" type="button" onClick={() => void logout()}>Sign out</button>
               </div>
             </div>
-            <p className="auth-intro">Active requests assigned to your department.</p>
-            {queueLoading && departmentQueue.length === 0 && <p role="status">Loading department requests…</p>}
-            {queueError && <div className="error-box" role="alert">{queueError}</div>}
-            {queueNotice && <div className="error-box" role="alert">{queueNotice}</div>}
-            {!queueLoading && !queueError && !queueNotice && departmentQueue.length === 0 && (
-              <p className="queue-empty">No active requests in your department.</p>
-            )}
-            <div className="department-queue-list">
-              {!queueError && departmentQueue.map((item) => (
+            <p className={`auth-intro${showOverdueQueue ? ' overdue-queue-intro' : ''}`}>
+              {showOverdueQueue
+                ? 'Requests more than seven days overdue are removed from this view.'
+                : 'Active requests assigned to your department.'}
+            </p>
+            {showOverdueQueue ? (
+              <>
+                {overdueQueueLoading && overdueQueue.length === 0 && <p role="status">Loading overdue requests…</p>}
+                {overdueQueueError && <div className="error-box" role="alert">{overdueQueueError}</div>}
+                {!overdueQueueLoading && !overdueQueueError && overdueQueue.length === 0 && (
+                  <p className="queue-empty">No requests have been overdue for seven days or less.</p>
+                )}
+                <div className="department-queue-list" aria-label="Overdue requests">
+                  {!overdueQueueError && overdueQueue.map((item) => (
+                    <article className="status-card queue-request-card" key={item.id}>
+                      <div className="status-row">
+                        <strong>Request {item.id}</strong>
+                        <span className="queue-request-badges">
+                          <span className="deadline-badge deadline-badge--overdue">Overdue</span>
+                          <span className="status-badge">{item.status}</span>
+                        </span>
+                      </div>
+                      <p className="submitted-description">{item.description}</p>
+                      <div className="queue-request-overdue-details">
+                        <span>{getDepartmentLabel(item.departmentId)}</span>
+                        <span>Expected by {formatExpectedResolutionDate(item.expectedResolutionDate) || 'Unknown'}</span>
+                        {item.createdAt && <time dateTime={item.createdAt}>Submitted {formatSubmittedAt(item.createdAt) || 'Time unavailable'}</time>}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                {queueLoading && departmentQueue.length === 0 && <p role="status">Loading department requests…</p>}
+                {queueError && <div className="error-box" role="alert">{queueError}</div>}
+                {queueNotice && <div className="error-box" role="alert">{queueNotice}</div>}
+                {!queueLoading && !queueError && !queueNotice && departmentQueue.length === 0 && (
+                  <p className="queue-empty">No active requests in your department.</p>
+                )}
+                <div className="department-queue-list">
+                  {!queueError && departmentQueue.map((item) => (
                 <article
                   className={`status-card queue-request-card${queueRemovingId === item.id ? ' queue-request-card--removing' : ''}`}
                   key={item.id}
                 >
                   <div className="status-row">
                     <strong>Request {item.id}</strong>
-                    <span className="status-badge">{item.status}</span>
+                    <span className="queue-request-badges">
+                      {item.deadlineStatus === 'due-soon' && <span className="deadline-badge deadline-badge--due-soon">Due soon</span>}
+                      <span className="status-badge">{item.status}</span>
+                    </span>
                   </div>
                   <p className="submitted-description">{item.description}</p>
                   {formatExpectedResolutionDate(item.expectedResolutionDate) && (
@@ -449,8 +517,10 @@ function RequestApp() {
                     )}
                   </div>
                 </article>
-              ))}
-            </div>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
         </main>
       );
@@ -507,6 +577,13 @@ function RequestApp() {
             {adminRequestsLoading && adminRequests.length === 0 && <p role="status">Loading all requests…</p>}
             {adminRequestsError && <div className="error-box" role="alert">{adminRequestsError}</div>}
             {adminRequestsNotice && <div className="error-box" role="alert">{adminRequestsNotice}</div>}
+            {!adminRequestsError && dueSoonRequestCount > 0 && (
+              <div className="admin-deadline-alert" role="alert">
+                {dueSoonRequestCount === 1
+                  ? 'Attention: 1 active request is due within 3 hours.'
+                  : `Attention: ${dueSoonRequestCount} active requests are due within 3 hours.`}
+              </div>
+            )}
             {!adminRequestsLoading && !adminRequestsError && adminRequests.length === 0 && (
               <p className="request-history-empty">No requests have been submitted yet.</p>
             )}
@@ -514,11 +591,18 @@ function RequestApp() {
               <p className="request-history-empty">No {getDepartmentLabel(adminDepartmentFilter)} requests found.</p>
             )}
             <div className="admin-request-list">
-              {!adminRequestsError && visibleAdminRequests.map((item) => (
+              {!adminRequestsError && visibleAdminRequests.map((item) => {
+                const assignmentDisabled = item.status === 'Resolved' || item.deadlineStatus === 'overdue';
+                const assignmentHelpId = `${item.status === 'Resolved' ? 'resolved' : 'overdue'}-assignment-help-${item.id}`;
+                return (
                 <article className="admin-request-card" key={item.id}>
                   <div className="status-row">
                     <strong>Request {item.id}</strong>
-                    <span className="status-badge">{item.status}</span>
+                    <span className="admin-request-badges">
+                      {item.deadlineStatus === 'overdue' && <span className="deadline-badge deadline-badge--overdue">Overdue</span>}
+                      {item.deadlineStatus === 'due-soon' && <span className="deadline-badge deadline-badge--due-soon">Due soon</span>}
+                      <span className="status-badge">{item.status}</span>
+                    </span>
                   </div>
                   <p className="admin-request-description">{item.description}</p>
                   <div className="admin-request-meta">
@@ -530,25 +614,26 @@ function RequestApp() {
                   </div>
                   <span
                     className="admin-request-manage-wrap"
-                    tabIndex={item.status === 'Resolved' ? 0 : undefined}
-                    aria-describedby={item.status === 'Resolved' ? `resolved-assignment-help-${item.id}` : undefined}
+                    tabIndex={assignmentDisabled ? 0 : undefined}
+                    aria-describedby={assignmentDisabled ? assignmentHelpId : undefined}
                   >
                     <button
                       className="btn btn-secondary admin-request-manage"
                       type="button"
                       onClick={() => void openAdminAssignment(item)}
-                      disabled={item.status === 'Resolved'}
+                      disabled={assignmentDisabled}
                     >
                       Manage assignment
                     </button>
-                    {item.status === 'Resolved' && (
-                      <span className="admin-request-manage-help" role="tooltip" id={`resolved-assignment-help-${item.id}`}>
-                        Resolved requests cannot be assigned.
+                    {assignmentDisabled && (
+                      <span className="admin-request-manage-help" role="tooltip" id={assignmentHelpId}>
+                        {item.status === 'Resolved' ? 'Resolved requests cannot be assigned.' : 'Overdue requests cannot be assigned.'}
                       </span>
                     )}
                   </span>
                 </article>
-              ))}
+                );
+              })}
             </div>
           </section>
           ) : adminScreen === 'workload' ? (
@@ -946,8 +1031,11 @@ function RequestApp() {
                     <article className="request-history-card" key={item.id}>
                       <div className="request-history-card-heading">
                         <strong>Request {item.id}</strong>
-                        <span className={`status-badge request-history-status request-history-status--${statusClass}`}>
-                          {item.status}
+                        <span className="request-history-badges">
+                          {item.deadlineStatus === 'overdue' && <span className="deadline-badge deadline-badge--overdue">Overdue</span>}
+                          <span className={`status-badge request-history-status request-history-status--${statusClass}`}>
+                            {item.status}
+                          </span>
                         </span>
                       </div>
                       <p className="request-history-description">{item.description}</p>

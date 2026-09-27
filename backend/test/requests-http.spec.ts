@@ -124,6 +124,38 @@ describe('Requests HTTP boundaries', () => {
       .expect(403);
   });
 
+  it('returns derived deadline indicators to Admins for overdue and due-soon requests', async () => {
+    const now = Date.now();
+    const overdue = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-FR9-OVERDUE'))
+      .send({
+        departmentId: 'DEPT-IT',
+        description: 'Request past its expected deadline',
+        expectedResolutionDate: new Date(now - 60_000).toISOString(),
+      })
+      .expect(201);
+    const dueSoon = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-FR9-DUE-SOON'))
+      .send({
+        departmentId: 'DEPT-HR',
+        description: 'Request due within the warning window',
+        expectedResolutionDate: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
+      })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/requests/admin')
+      .set(adminHeaders('ADMIN-FR9'))
+      .expect(200);
+
+    expect(response.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: overdue.body.id, deadlineStatus: 'overdue' }),
+      expect.objectContaining({ id: dueSoon.body.id, deadlineStatus: 'due-soon' }),
+    ]));
+  });
+
   it('allows only Admins to read workload summaries', async () => {
     const response = await request(app.getHttpServer())
       .get('/requests/admin/workload')
@@ -171,17 +203,17 @@ describe('Requests HTTP boundaries', () => {
     const resolvedRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-OWN-LIST'))
-      .send({ departmentId: 'DEPT-IT', description: 'My resolved request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
+      .send({ departmentId: 'DEPT-IT', description: 'My resolved request', expectedResolutionDate: new Date(Date.now() - 60_000).toISOString() })
       .expect(201);
     const openRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-OWN-LIST'))
-      .send({ departmentId: 'DEPT-FINANCE', description: 'My open request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
+      .send({ departmentId: 'DEPT-FINANCE', description: 'My open request', expectedResolutionDate: new Date(Date.now() - 60_000).toISOString() })
       .expect(201);
     const privateRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-OTHER-LIST'))
-      .send({ departmentId: 'DEPT-HR', description: 'Another employee’s private request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
+      .send({ departmentId: 'DEPT-HR', description: 'Another employee’s private request', expectedResolutionDate: new Date(Date.now() - 60_000).toISOString() })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -210,6 +242,8 @@ describe('Requests HTTP boundaries', () => {
       expect.arrayContaining(['Open', 'Resolved']),
     );
     expect(ownRequests.body.every((item: { requesterId: string }) => item.requesterId === 'EMP-OWN-LIST')).toBe(true);
+    expect(ownRequests.body.find((item: { id: string }) => item.id === openRequest.body.id).deadlineStatus).toBe('overdue');
+    expect(ownRequests.body.find((item: { id: string }) => item.id === resolvedRequest.body.id).deadlineStatus).toBeNull();
     const resolvedHistory = ownRequests.body.find((item: { id: string }) => item.id === resolvedRequest.body.id).statusHistory;
     expect(resolvedHistory.map(({ fromStatus, toStatus }: { fromStatus: string | null; toStatus: string }) => [fromStatus, toStatus])).toEqual([
       [null, 'Open'],
@@ -514,7 +548,7 @@ describe('Requests HTTP boundaries', () => {
     const itRequest = await request(app.getHttpServer())
       .post('/requests')
       .set(employeeHeaders('EMP-021'))
-      .send({ departmentId: 'DEPT-IT', description: 'IT queue item that should appear', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
+      .send({ departmentId: 'DEPT-IT', description: 'IT queue item that should appear', expectedResolutionDate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() })
       .expect(201);
     const hrRequest = await request(app.getHttpServer())
       .post('/requests')
@@ -525,6 +559,16 @@ describe('Requests HTTP boundaries', () => {
       .post('/requests')
       .set(employeeHeaders('EMP-022'))
       .send({ departmentId: 'DEPT-IT', description: 'Resolved IT request', expectedResolutionDate: '2026-10-15T17:30:00.000Z' })
+      .expect(201);
+    const recentOverdueRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-024'))
+      .send({ departmentId: 'DEPT-IT', description: 'Recent overdue queue request', expectedResolutionDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() })
+      .expect(201);
+    const expiredOverdueRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-025'))
+      .send({ departmentId: 'DEPT-IT', description: 'Overdue longer than one week', expectedResolutionDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString() })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -547,8 +591,19 @@ describe('Requests HTTP boundaries', () => {
     expect(returnedIds).toContain(itRequest.body.id);
     expect(returnedIds).not.toContain(hrRequest.body.id);
     expect(returnedIds).not.toContain(resolvedRequest.body.id);
+    expect(returnedIds).not.toContain(recentOverdueRequest.body.id);
+    expect(returnedIds).not.toContain(expiredOverdueRequest.body.id);
     expect(response.body.every((item: { departmentId: string; status: string }) =>
       item.departmentId === 'DEPT-IT' && item.status !== 'Resolved')).toBe(true);
+    expect(response.body.find((item: { id: string }) => item.id === itRequest.body.id).deadlineStatus).toBe('due-soon');
+
+    const overdueResponse = await request(app.getHttpServer())
+      .get('/requests/queue/overdue')
+      .set(staffHeaders('STAFF-IT-1', 'DEPT-IT'))
+      .expect(200);
+    expect(overdueResponse.body.map((item: { id: string }) => item.id)).toContain(recentOverdueRequest.body.id);
+    expect(overdueResponse.body.map((item: { id: string }) => item.id)).not.toContain(expiredOverdueRequest.body.id);
+    expect(overdueResponse.body.find((item: { id: string }) => item.id === recentOverdueRequest.body.id).deadlineStatus).toBe('overdue');
   });
 
   it('denies queue access to Employees, Admins, and Staff without a department assignment', async () => {
@@ -557,11 +612,23 @@ describe('Requests HTTP boundaries', () => {
       .set(employeeHeaders('EMP-023'))
       .expect(403);
     await request(app.getHttpServer())
+      .get('/requests/queue/overdue')
+      .set(employeeHeaders('EMP-023'))
+      .expect(403);
+    await request(app.getHttpServer())
       .get('/requests/queue')
       .set({ Authorization: 'Bearer test:ADMIN-1:Admin' })
       .expect(403);
     await request(app.getHttpServer())
+      .get('/requests/queue/overdue')
+      .set({ Authorization: 'Bearer test:ADMIN-1:Admin' })
+      .expect(403);
+    await request(app.getHttpServer())
       .get('/requests/queue')
+      .set({ Authorization: 'Bearer test:STAFF-NO-DEPT:Staff' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/requests/queue/overdue')
       .set({ Authorization: 'Bearer test:STAFF-NO-DEPT:Staff' })
       .expect(403);
   });
