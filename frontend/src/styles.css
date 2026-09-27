@@ -89,6 +89,12 @@ textarea {
   line-height: 1.6;
 }
 
+.admin-monitor-panel > .auth-intro,
+.admin-assignment-panel > .auth-intro {
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .auth-panel .auth-intro {
   font-size: 0.9rem;
 }
@@ -226,16 +232,168 @@ button {
 }
 
 .admin-assignment-panel {
+  display: flex;
+  flex-direction: column;
   width: min(100%, 900px);
   min-height: 0;
-  height: auto;
+  height: min(82vh, 820px);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  animation: admin-assignment-enter 280ms ease-out both;
+}
+
+@keyframes admin-assignment-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-assignment-panel {
+    animation: none;
+  }
+}
+
+.admin-workspace-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 1200px;
+  min-height: 100vh;
+  gap: 24px;
+  padding-block: 32px;
+}
+
+.admin-monitor-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 900px);
+  min-height: 0;
+  height: min(82vh, 820px);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+.admin-monitor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-monitor-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.admin-monitor-toolbar .field-group {
+  width: min(100%, 280px);
+}
+
+.admin-monitor-toolbar select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: inherit;
+}
+
+.admin-monitor-count {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.admin-request-list {
+  display: grid;
+  flex: 1;
+  gap: 12px;
+  min-height: 0;
+  margin-top: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
+}
+
+.admin-request-card {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.admin-request-manage {
+  width: 184px;
+  height: 36px;
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 0.84rem;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-assignment-form > .btn,
+.admin-department-form > .btn {
+  width: 184px;
+  height: 42px;
+  min-height: 42px;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-request-manage {
+  margin-top: 16px;
+}
+
+.admin-request-description {
+  margin: 12px 0;
+  color: var(--ink);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.admin-request-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.admin-request-meta span {
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.admin-request-meta strong {
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .admin-assignment-lookup,
 .admin-assignment-form,
 .admin-department-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 200px;
   align-items: end;
   gap: 14px;
 }
@@ -252,10 +410,10 @@ button {
 .admin-assignment-panel input,
 .admin-assignment-panel select {
   width: 100%;
-  min-height: 48px;
+  min-height: 42px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
   font: inherit;
@@ -269,7 +427,9 @@ button {
 }
 
 .admin-assignment-request {
-  margin-top: 24px;
+  margin-top: auto;
+  margin-bottom: 0;
+  transform: translateY(16px);
 }
 
 .admin-assignment-meta {
@@ -1052,6 +1212,24 @@ textarea:focus {
   .admin-department-form {
     grid-template-columns: 1fr;
   }
+
+  .admin-request-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-monitor-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 1100px) {
+  .admin-workspace-shell {
+    height: auto;
+    min-height: 100vh;
+    align-items: center;
+  }
+
 }
 
 .submission-dialog-backdrop {
