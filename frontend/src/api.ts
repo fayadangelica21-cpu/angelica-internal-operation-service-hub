@@ -8,7 +8,9 @@ export type RequestRecord = {
   description: string;
   status: string;
   ownerId?: string | null;
+  ownerDisplayName?: string | null;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AssignableStaff = {
@@ -69,6 +71,12 @@ export async function listOwnRequests(): Promise<RequestRecord[]> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(readErrorMessage(body));
   if (!Array.isArray(body)) throw new Error('Your request list response was invalid.');
+  return body as RequestRecord[];
+}
+
+export async function getAllRequestsForAdmin(): Promise<RequestRecord[]> {
+  const body = await getAuthenticatedJson<unknown>('/requests/admin', 'The Admin request list response was invalid.');
+  if (!Array.isArray(body)) throw new Error('The Admin request list response was invalid.');
   return body as RequestRecord[];
 }
 

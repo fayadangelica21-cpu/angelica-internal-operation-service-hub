@@ -75,6 +75,36 @@ describe('Requests HTTP boundaries', () => {
       .expect(400);
   });
 
+  it('lets Admins view requests across departments and denies that list to other roles', async () => {
+    const itRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-ADMIN-OVERVIEW-IT'))
+      .send({ departmentId: 'DEPT-IT', description: 'Admin overview IT request' })
+      .expect(201);
+    const hrRequest = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-ADMIN-OVERVIEW-HR'))
+      .send({ departmentId: 'DEPT-HR', description: 'Admin overview HR request' })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/requests/admin')
+      .set(adminHeaders('ADMIN-OVERVIEW'))
+      .expect(200);
+    expect(response.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: itRequest.body.id, departmentId: 'DEPT-IT' }),
+      expect.objectContaining({ id: hrRequest.body.id, departmentId: 'DEPT-HR' }),
+    ]));
+    await request(app.getHttpServer())
+      .get('/requests/admin')
+      .set(employeeHeaders('EMP-ADMIN-OVERVIEW-IT'))
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/requests/admin')
+      .set(staffHeaders('STAFF-OVERVIEW', 'DEPT-IT'))
+      .expect(403);
+  });
+
   it('returns 404 for a request that does not exist', async () => {
     await request(app.getHttpServer())
       .get('/requests/not-a-real-request')
