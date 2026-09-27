@@ -22,6 +22,7 @@ Open → In Progress → Resolved
 - NestJS API with an explicit contract
 - SQLite persistence through TypeORM
 - Firebase-authenticated Staff can view active requests in their assigned department; the backend derives the department from the verified identity
+- Staff can open a separate overdue view for overdue requests with deadlines in the previous seven days; older overdue requests are omitted from both Staff queue views
 - Admins can assign or reassign a request to a Staff account in that request's department
 - Admins can move an active request to another department; the request returns to the Open queue without its previous Staff owner
 - Admins can monitor requests across IT, HR, and Finance, including current status and owner
@@ -33,6 +34,7 @@ Open → In Progress → Resolved
 - Department queue authorization tests ensure Staff cannot see other departments' requests and resolved requests are excluded
 - Invalid input rejected on purpose (`400`)
 - Missing request handled on purpose (`404`)
+- Status changes are visible through refreshed request lists; status-change notifications are not implemented yet
 - Automated business-rule, integration, and E2E tests
 - Regression protection for the forbidden `Open → Resolved` jump
 
@@ -230,7 +232,7 @@ Success (`201`):
 }
 ```
 
-`departmentId` must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`. Description and at least one expected resolution value (date, time, or both) are required. Date-only means 11:59 PM on the chosen date; time-only means that time on the submission date. The frontend sends the resulting ISO timestamp, which is stored in UTC and displayed in local time. FR9 overdue detection remains separate.
+`departmentId` must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`. Description and at least one expected resolution value (date, time, or both) are required. Date-only means 11:59 PM on the chosen date; time-only means that time on the submission date. The frontend sends the resulting ISO timestamp, which is stored in UTC and displayed in local time. Employees see their own active requests past their deadline marked **Overdue** in red. Staff see a **Due soon** mark for requests in their department queue that are due within three hours. Admins see overdue requests in red across departments; **Manage assignment** is disabled for them, and active requests due within three hours trigger an in-app warning. Resolved requests trigger neither indicator.
 
 ### View your requests (Employee)
 
@@ -249,6 +251,15 @@ Authorization: Bearer <FIREBASE_ID_TOKEN>
 ```
 
 This endpoint is for authenticated Staff accounts. The backend derives the department from the verified account and returns only that department's active `Open` and `In Progress` requests, newest first. The client cannot select or override the department. Employees, Admins, and Staff accounts without an assigned department receive `403 Forbidden`.
+
+The regular queue omits overdue requests. Staff can view overdue requests whose expected resolution deadline fell within the previous seven days:
+
+```http
+GET /requests/queue/overdue
+Authorization: Bearer <STAFF_FIREBASE_ID_TOKEN>
+```
+
+This Staff-only endpoint returns active overdue requests for the authenticated Staff member's department, newest update first. Requests overdue for more than seven days are omitted from this view. The Staff workspace provides **Weekly overdue** to open it and **Back** to return to the active queue.
 
 ### Read a request
 
@@ -401,7 +412,7 @@ npm run test:all
 
 ### E2E
 
-The FR8 E2E flow covers date-only, time-only, and combined date-and-time submission and verifies the resulting value appears in Employee request history.
+The FR8 E2E flow covers date-only, time-only, and combined date-and-time submission and verifies the resulting value appears in Employee request history. FR9 tests cover backend overdue/due-soon classification, the Staff queue's due-soon mark, the Admin warning and disabled assignment control, red overdue badges in Employee and Admin views, and exclusion of resolved requests.
 
 ```bash
 cd frontend
@@ -410,7 +421,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, Employee-only history and role-based page visibility, request submission and the Employee-owned request list with refreshed statuses and a chronological status timeline, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin monitoring requests across departments with department filtering, assigning/reassigning Staff, moving an active request to another department, and reviewing workload in the dedicated workload view. HTTP and SQLite integration tests verify that request privacy rules and Admin-only workload access hold server-side. Admin E2E coverage includes workload filtering, manual list refresh, opening a request with **Manage assignment**, and returning to the filtered list with **Back to requests**. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, Employee-only history and role-based page visibility, request submission and the Employee-owned request list with refreshed statuses and a chronological status timeline, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin monitoring requests across departments with department filtering, overdue and due-soon indicators, assigning/reassigning Staff, moving an active request to another department, and reviewing workload in the dedicated workload view. HTTP and SQLite integration tests verify that request privacy rules, deadline classification, and Admin-only workload access hold server-side. Admin E2E coverage includes workload filtering, manual list refresh, opening a request with **Manage assignment**, and returning to the filtered list with **Back to requests**. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
