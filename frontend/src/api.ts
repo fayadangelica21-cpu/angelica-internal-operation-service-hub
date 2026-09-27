@@ -9,6 +9,7 @@ export type RequestRecord = {
   status: string;
   ownerId?: string | null;
   ownerDisplayName?: string | null;
+  expectedResolutionDate?: string | null;
   createdAt?: string;
   updatedAt?: string;
   statusHistory?: RequestStatusHistoryRecord[];
@@ -69,14 +70,14 @@ function readErrorMessage(body: unknown): string {
   return 'Request could not be submitted.';
 }
 
-export async function createRequest(departmentId: string, description: string): Promise<RequestRecord> {
+export async function createRequest(departmentId: string, description: string, expectedResolutionDate: string): Promise<RequestRecord> {
   let response: Response;
   try {
     const token = await getAuthToken();
     response = await fetch(`${API_URL}/requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ departmentId, description }),
+      body: JSON.stringify({ departmentId, description, expectedResolutionDate }),
     });
   } catch {
     throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
