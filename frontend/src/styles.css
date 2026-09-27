@@ -232,7 +232,8 @@ button {
 }
 
 .admin-assignment-lookup,
-.admin-assignment-form {
+.admin-assignment-form,
+.admin-department-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
@@ -294,6 +295,12 @@ button {
 
 .admin-assignment-form {
   margin-top: 18px;
+}
+
+.admin-department-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
 }
 
 .assignment-success {
@@ -1041,7 +1048,8 @@ textarea:focus {
   }
 
   .admin-assignment-lookup,
-  .admin-assignment-form {
+  .admin-assignment-form,
+  .admin-department-form {
     grid-template-columns: 1fr;
   }
 }
