@@ -83,18 +83,20 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await page.getByRole('button', { name: 'IT', exact: true }).click();
   await page.getByLabel('Description').fill('Laptop screen flickers');
   await page.getByRole('button', { name: 'Submit request' }).click();
-  await expect(page.getByRole('heading', { name: 'Request submitted' })).toBeVisible();
-  await expect(page.getByLabel('Request status Open')).toBeVisible();
-  await expect(page.getByLabel('Created request')).toContainText('Laptop screen flickers');
+  const submissionDialog = page.getByRole('dialog', { name: 'Request submitted' });
+  await expect(submissionDialog).toBeVisible();
+  await expect(submissionDialog).toContainText('REQ-E2E-1');
+  await expect(submissionDialog).toContainText('Open the My requests tab to see its status and updates.');
+  await expect(page.getByLabel('Created request')).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'New request' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('region', { name: 'Your requests' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Continue submitting' }).click();
 
   await page.getByRole('button', { name: 'HR', exact: true }).click();
   await page.getByLabel('Description').fill('Need help understanding my leave balance');
   await page.getByRole('button', { name: 'Submit request' }).click();
-  await expect(page.getByRole('heading', { name: 'Request submitted' })).toBeVisible();
-
-  await page.getByRole('tab', { name: 'My requests' }).click();
+  await expect(page.getByRole('dialog', { name: 'Request submitted' })).toContainText('REQ-E2E-2');
+  await page.getByRole('button', { name: 'Go to My requests' }).click();
   await expect(page.getByLabel('Description')).toHaveCount(0);
   const requestHistory = page.getByRole('region', { name: 'Your requests' });
   await expect(requestHistory).toBeVisible();
@@ -230,8 +232,8 @@ test('Staff can take ownership of a request and resolve it from their department
   await expect(resolvingRequest).toContainText('In Progress');
   await resolvingRequest.getByRole('button', { name: 'Resolve request' }).click();
   await expect(resolvingRequest).toHaveClass(/queue-request-card--removing/);
-  await expect.poll(async () => Number(await resolvingRequest.evaluate((card) => getComputedStyle(card).opacity))).toBeLessThan(0.5);
   expect(await resolvingRequest.evaluate((card) => getComputedStyle(card).transitionDuration)).toContain('0.3s');
+  await expect.poll(async () => Number(await resolvingRequest.evaluate((card) => getComputedStyle(card).opacity))).toBeLessThan(0.5);
   await expect(otherRequest).toBeVisible();
   await expect(page.getByRole('status')).toHaveCount(0);
   await expect(resolvingRequest).toHaveCount(0);
@@ -309,13 +311,58 @@ test('Staff see a clear message if another staff member already took the request
   await expect(page.getByRole('button', { name: 'Resolve request' })).toBeVisible();
 });
 
-test('admin authentication resolves the admin role without showing employee submission', async ({ page }) => {
+test('Admin can assign and reassign a request to Staff in its department', async ({ page }) => {
+  const targetRequest = {
+    id: 'REQ-ADMIN-FR6-001',
+    requesterId: 'employee-private-id',
+    departmentId: 'DEPT-HR',
+    description: 'HR request that needs an owner',
+    status: 'Open',
+    ownerId: null as string | null,
+  };
+  const staffMembers = [
+    { id: 'staff-hr-one', displayName: 'HR One', email: 'hr.one@example.test' },
+    { id: 'staff-hr-two', displayName: 'HR Two', email: 'hr.two@example.test' },
+  ];
+  await page.route('**/requests/REQ-ADMIN-FR6-001', async (route) => route.fulfill({ json: targetRequest }));
+  await page.route('**/requests/REQ-ADMIN-FR6-001/assignees', async (route) => route.fulfill({ json: staffMembers }));
+  await page.route('**/requests/REQ-ADMIN-FR6-001/assign', async (route) => {
+    const { ownerId } = route.request().postDataJSON() as { ownerId: string };
+    targetRequest.ownerId = ownerId;
+    targetRequest.status = 'In Progress';
+    await route.fulfill({ json: targetRequest });
+  });
+
   await page.goto('/');
   await page.getByLabel('Email').fill('admin@example.test');
   await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Admin workspace' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Request assignment' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Submit request' })).toHaveCount(0);
+
+  await page.getByLabel('Request ID').fill('REQ-ADMIN-FR6-001');
+  await page.getByRole('button', { name: 'Find request' }).click();
+  const selectedRequest = page.getByRole('region', { name: 'Request selected for assignment' });
+  await expect(selectedRequest).toContainText('HR request that needs an owner');
+  await expect(page.getByLabel('Assign to Staff')).toContainText('HR One');
+  await expect(page.getByLabel('Assign to Staff')).not.toContainText('IT Staff');
+
+  await page.getByLabel('Assign to Staff').selectOption('staff-hr-one');
+  await page.getByRole('button', { name: 'Assign request' }).click();
+  await expect(page.getByRole('status')).toHaveText('Request assigned successfully.');
+  await expect(selectedRequest).toContainText('In Progress');
+  await expect(selectedRequest).toContainText('HR One');
+
+  await page.getByLabel('Assign to Staff').selectOption('staff-hr-two');
+  await page.getByRole('button', { name: 'Reassign request' }).click();
+  await expect(page.getByRole('status')).toHaveText('Request reassigned successfully.');
+  await expect(selectedRequest).toContainText('HR Two');
+
+  await page.getByRole('button', { name: 'New lookup' }).click();
+  await expect(page.getByLabel('Request ID')).toHaveValue('');
+  await expect(selectedRequest).toHaveCount(0);
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Find request' })).toBeDisabled();
 });
 
 test('a delayed profile response from an older account cannot replace the current login', async ({ page }) => {
@@ -343,9 +390,9 @@ test('a delayed profile response from an older account cannot replace the curren
     localStorage.setItem('service-hub-e2e-user', JSON.stringify({ uid: 'current-user', email: 'current@example.test' }));
     window.dispatchEvent(new Event('service-hub-auth-changed'));
   });
-  await expect(page.getByRole('heading', { name: 'Admin workspace' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Request assignment' })).toBeVisible();
   releaseOldProfile?.();
-  await expect(page.getByRole('heading', { name: 'Admin workspace' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Request assignment' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Employee workspace' })).toHaveCount(0);
 });
 
