@@ -225,6 +225,87 @@ button {
   height: auto;
 }
 
+.admin-assignment-panel {
+  width: min(100%, 900px);
+  min-height: 0;
+  height: auto;
+}
+
+.admin-assignment-lookup,
+.admin-assignment-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.admin-assignment-lookup {
+  margin-top: 24px;
+}
+
+.admin-assignment-lookup-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.admin-assignment-panel input,
+.admin-assignment-panel select {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: inherit;
+}
+
+.admin-assignment-panel input:focus,
+.admin-assignment-panel select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+
+.admin-assignment-request {
+  margin-top: 24px;
+}
+
+.admin-assignment-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.admin-assignment-meta span {
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.admin-assignment-meta strong {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-assignment-form {
+  margin-top: 18px;
+}
+
+.assignment-success {
+  margin: 18px 0 0;
+  border: 1px solid rgba(31, 122, 61, 0.2);
+  border-radius: 12px;
+  background: var(--tone-good);
+  color: var(--tone-good-text);
+  padding: 12px 14px;
+  font-weight: 700;
+}
+
 .auth-shell.department-queue-shell {
   min-height: 100vh;
 }
@@ -674,6 +755,7 @@ textarea:focus {
 
 .request-history-list {
   min-height: 0;
+  margin-top: 20px;
 }
 
 .request-history-card-heading strong {
@@ -957,6 +1039,117 @@ textarea:focus {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .admin-assignment-lookup,
+  .admin-assignment-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.submission-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(12, 25, 48, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.submission-dialog {
+  position: relative;
+  width: min(100%, 460px);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 28px 90px rgba(8, 24, 48, 0.3);
+  animation: submission-dialog-enter 180ms ease-out both;
+}
+
+.submission-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(15, 39, 68, 0.07);
+  color: var(--ink);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.submission-success-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 0;
+  border-radius: 50%;
+  background: var(--tone-good);
+  color: var(--tone-good-text);
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+
+.submission-dialog-kicker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.submission-dialog-kicker .eyebrow {
+  margin: 0;
+}
+
+.submission-dialog h2 {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 1.5rem;
+}
+
+.submission-dialog-copy {
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.submission-request-id {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(47, 111, 237, 0.045);
+  overflow-wrap: anywhere;
+}
+
+.submission-request-id strong {
+  display: block;
+  color: var(--ink);
+}
+
+.submission-dialog-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.submission-dialog-actions .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+}
+
+@keyframes submission-dialog-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @media (min-width: 861px) {
