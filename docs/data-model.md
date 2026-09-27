@@ -12,8 +12,8 @@
 
 This model is derived from the product requirements and architecture rather than from implementation convenience.
 
-1. **Store facts that must survive time.** A request, its department, requester, current owner, expected resolution date, and status history are durable facts.
-2. **Do not store values that can be derived safely.** For example, `is_overdue` is a derived condition from the expected resolution date and the current time, so it does not need to be a separate durable fact.
+1. **Store facts that must survive time.** A request, its department, requester, current owner, expected resolution date and time, and status history are durable facts.
+2. **Do not store values that can be derived safely.** For example, `is_overdue` is a derived condition from the expected resolution timestamp and current time, so it does not need to be a separate durable fact.
 3. **Keep ownership representable.** Every request must belong to exactly one department, while its staff owner may be absent until someone takes ownership.
 4. **Keep history separate from current state.** The current request status answers “where is it now?”; status history answers “what happened before?”.
 5. **Keep authorization data available to the backend.** User role and department are needed to enforce the server-side access rules defined by the architecture.
@@ -76,7 +76,7 @@ The central business entity. It represents an employee's request for help from a
 - `description` — problem/request supplied by the employee.
 - `status` — current lifecycle state, initially `Open`.
 - `owner_id` — staff member currently responsible for the request; may be empty/unassigned.
-- `expected_resolution_date` — optional date used to identify overdue requests.
+- `expected_resolution_date` — Employee-provided expected resolution date, time, or both, with at least one required; the resulting deadline is stored as a UTC ISO timestamp for overdue checks. Date-only means 11:59 PM on that date; time-only applies to the submission date.
 - `created_at` — when the request was created.
 - `updated_at` — when the current request record was last changed.
 
@@ -201,7 +201,7 @@ Traceability: FR5, FR10–FR11, acceptance criteria §9; architecture §4.1; AI 
 A request is overdue when:
 
 ```text
-expected_resolution_date < current time
+expected_resolution_date < current UTC instant
 AND request is not yet resolved
 ```
 
@@ -235,12 +235,12 @@ Traceability: FR13, FR4–FR7, FR12, FR14, edge case §10; architecture §3.1.
 | Description | Durable | Original business information |
 | Current status | Durable | Current lifecycle state |
 | Staff owner | Durable | Current responsibility |
-| Expected resolution date | Durable | Business commitment used for overdue detection |
+| Expected resolution target | Durable | UTC timestamp used for overdue detection; date, time, or both may be entered |
 | Created/updated timestamps | Durable | Request timing and operational history |
 | Status history | Durable | Required full request history |
 | User role/department | Durable/authoritative from identity context | Needed for authorization decisions |
 | AI triage suggestion payload | Temporary / non-durable | Only a recommendation before the final request is submitted |
-| `is_overdue` | **Derived** | Depends on current time + expected resolution date + current state |
+| `is_overdue` | **Derived** | Depends on current UTC time + expected resolution timestamp + current state |
 | Department queue membership | **Derived** | Query of requests by department/status |
 | Active vs resolved queue | **Derived** | Query of current status |
 | Admin workload view | **Derived** | Aggregate of requests/owners/departments |
@@ -315,7 +315,7 @@ Supports: FR12.
 ### AP5 — Admin finds overdue requests
 
 ```text
-Find requests whose expected_resolution_date is before now
+Find requests whose expected_resolution_date timestamp is before now
 and whose current status is not Resolved.
 ```
 
@@ -351,8 +351,8 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 | Status | Requirement(s) | Rationale |
 |---|---|---|
-| Implemented | FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR11, FR12, FR13, FR14 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to a Staff profile in the request's own department. FR7 lets Admins move an active request to a different supported department; the backend clears its owner, returns it to `Open`, validates authorization and department values, and rejects resolved requests. FR11 records each status transition and displays the chronological timeline in the Employee's own request history; initial submission, assignment, resolution, and private history filtering are covered by HTTP, SQLite integration, and Playwright tests. FR12 gives Admins a cross-department request list with status, owner, and timing details, plus manual and automatic refresh. FR13 enforces Employee ownership and Staff department boundaries server-side, with Admin cross-department access; request-list, queue, detail, and protected-action boundaries are covered by HTTP and SQLite integration tests, while Playwright verifies authenticated Employee history and role-specific views. FR14 gives Admins department totals and each registered Staff member's active, Open, and In Progress assignment counts; resolved requests are excluded, zero-workload Staff remain visible, and the department selector filters the dedicated workload view. HTTP, SQLite integration, and Playwright tests cover the workload endpoint, calculations, authorization, and dashboard. |
-| Not implemented | FR8, FR9, FR10 | These requirements are not yet implemented and verified end-to-end. |
+| Implemented | FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR11, FR12, FR13, FR14 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to a Staff profile in the request's own department. FR7 lets Admins move an active request to a different supported department; the backend clears its owner, returns it to `Open`, validates authorization and department values, and rejects resolved requests. FR8 lets the Employee provide a date, a time, or both for the expected resolution; the client applies the documented default when one part is omitted, the backend validates and persists the UTC timestamp, and Employee, Staff, and Admin views display it in local time. HTTP, SQLite integration, and Playwright tests cover validation, persistence, and submission. FR11 records each status transition and displays the chronological timeline in the Employee's own request history; initial submission, assignment, resolution, and private history filtering are covered by HTTP, SQLite integration, and Playwright tests. FR12 gives Admins a cross-department request list with status, owner, and timing details, plus manual and automatic refresh. FR13 enforces Employee ownership and Staff department boundaries server-side, with Admin cross-department access; request-list, queue, detail, and protected-action boundaries are covered by HTTP and SQLite integration tests, while Playwright verifies authenticated Employee history and role-specific views. FR14 gives Admins department totals and each registered Staff member's active, Open, and In Progress assignment counts; resolved requests are excluded, zero-workload Staff remain visible, and the department selector filters the dedicated workload view. HTTP, SQLite integration, and Playwright tests cover the workload endpoint, calculations, authorization, and dashboard. |
+| Not implemented | FR9, FR10 | These requirements are not yet implemented and verified end-to-end. |
 
 ### 9.2 Requirement-to-model mapping
 
@@ -365,8 +365,8 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 | FR5 Staff update status | Request.status + Status History |
 | FR6 Ownership/assignment | Request.owner_id |
 | FR7 Department reassignment | Request.department_id can be changed by authorized admin |
-| FR8 Expected date | Request.expected_resolution_date |
-| FR9 Overdue detection | Derived from expected date + current status |
+| FR8 Expected date and time | Request.expected_resolution_date (UTC timestamp) |
+| FR9 Overdue detection | Derived from expected timestamp + current status |
 | FR10 Notifications | Status History/current status provides committed change for notification |
 | FR11 Full history | Request Status History |
 | FR12 Admin cross-department monitoring | Department relationship + request collection supports cross-department reads |
@@ -412,7 +412,7 @@ The following product unknowns may require future model changes:
 3. Will requests have priority levels?
 4. Will employees and staff exchange comments?
 5. Can employees cancel requests?
-6. Who sets the expected resolution date and at what point in the lifecycle?
+6. What overdue behavior should follow when a request passes its expected resolution timestamp? (FR9 remains unimplemented; notifications are tracked separately under FR10.)
 
 These questions are deliberately recorded rather than silently answered in the v0.1 model.
 
@@ -435,7 +435,7 @@ Request
  ├─ owner_id             → User (optional)
  ├─ description
  ├─ status               → current lifecycle state
- ├─ expected_resolution_date
+ ├─ expected_resolution_date (UTC timestamp)
  └─ timestamps
 
 Request Status History
