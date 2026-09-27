@@ -264,6 +264,59 @@ describe('Requests HTTP boundaries', () => {
       .expect(400);
   });
 
+  it('lets only Admins move an active request to a valid different department and clears its prior owner', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/requests')
+      .set(employeeHeaders('EMP-DEPT-MOVE'))
+      .send({ departmentId: 'DEPT-IT', description: 'Request routed to the wrong department' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-IT-MOVE', 'DEPT-IT'))
+      .send({ ownerId: 'STAFF-IT-MOVE' })
+      .expect(200);
+
+    const moved = await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/department`)
+      .set(adminHeaders('ADMIN-DEPT-MOVE'))
+      .send({ departmentId: 'DEPT-HR' })
+      .expect(200);
+    expect(moved.body).toMatchObject({ departmentId: 'DEPT-HR', ownerId: null, status: 'Open' });
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/department`)
+      .set(employeeHeaders('EMP-DEPT-MOVE'))
+      .send({ departmentId: 'DEPT-FINANCE' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/department`)
+      .set(adminHeaders('ADMIN-DEPT-MOVE'))
+      .send({ departmentId: 'DEPT-HR' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/department`)
+      .set(adminHeaders('ADMIN-DEPT-MOVE'))
+      .send({ departmentId: 'DEPT-UNKNOWN' })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/assign`)
+      .set(staffHeaders('STAFF-HR-MOVE', 'DEPT-HR'))
+      .send({ ownerId: 'STAFF-HR-MOVE' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/status`)
+      .set(staffHeaders('STAFF-HR-MOVE', 'DEPT-HR'))
+      .send({ targetStatus: 'Resolved' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`/requests/${created.body.id}/department`)
+      .set(adminHeaders('ADMIN-DEPT-MOVE'))
+      .send({ departmentId: 'DEPT-FINANCE' })
+      .expect(400);
+  });
+
   it('requires the valid lifecycle step before Staff can resolve a request', async () => {
     const created = await request(app.getHttpServer())
       .post('/requests')
