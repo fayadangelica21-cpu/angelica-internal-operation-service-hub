@@ -22,6 +22,9 @@ export class RequestEntity {
   @Column({ nullable: true })
   ownerId?: string | null;
 
+  @Column({ name: 'expected_resolution_date', type: 'varchar', length: 32, nullable: true })
+  expectedResolutionDate: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

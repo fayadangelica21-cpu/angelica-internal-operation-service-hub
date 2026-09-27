@@ -51,12 +51,14 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({ json: employeeRequests });
       return;
     }
-    const payload = route.request().postDataJSON() as { departmentId: string; description: string };
+    const payload = route.request().postDataJSON() as { departmentId: string; description: string; expectedResolutionDate: string };
+    expect(payload.expectedResolutionDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     const record = {
       id: `REQ-E2E-${employeeRequests.length + 1}`,
       requesterId: 'e2e-employee@example.test',
       departmentId: payload.departmentId,
       description: payload.description,
+      expectedResolutionDate: payload.expectedResolutionDate,
       status: 'Open',
       ownerId: null,
       createdAt: new Date().toISOString(),
@@ -85,6 +87,8 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await expect(page.getByText('e2e-employee@example.test', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'IT', exact: true }).click();
   await page.getByLabel('Description').fill('Laptop screen flickers');
+  await page.getByLabel('Expected resolution date').fill('2026-10-15');
+  await page.getByLabel('Expected resolution time').fill('17:30');
   await page.getByRole('button', { name: 'Submit request' }).click();
   const submissionDialog = page.getByRole('dialog', { name: 'Request submitted' });
   await expect(submissionDialog).toBeVisible();
@@ -97,6 +101,8 @@ test('employee can submit a request and see the persisted lifecycle starting sta
 
   await page.getByRole('button', { name: 'HR', exact: true }).click();
   await page.getByLabel('Description').fill('Need help understanding my leave balance');
+  await page.getByLabel('Expected resolution date').fill('2026-10-20');
+  await page.getByLabel('Expected resolution time').fill('09:15');
   await page.getByRole('button', { name: 'Submit request' }).click();
   await expect(page.getByRole('dialog', { name: 'Request submitted' })).toContainText('REQ-E2E-2');
   await page.getByRole('button', { name: 'Go to My requests' }).click();
@@ -106,6 +112,7 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await expect(requestHistory.locator('.request-history-card')).toHaveCount(2);
   await expect(requestHistory).toContainText('Need help understanding my leave balance');
   await expect(requestHistory).toContainText('Laptop screen flickers');
+  await expect(requestHistory).toContainText('Expected by');
 
   await page.route('**/requests', async (route) => {
     await route.fulfill({ json: [
@@ -139,6 +146,26 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await page.getByRole('tab', { name: 'New request' }).click();
   await expect(page.getByLabel('Description')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Your requests' })).toHaveCount(0);
+});
+
+test('employee may provide only a date or only a time for the expected resolution', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-27T08:00:00') });
+  await page.goto('/');
+  await page.getByLabel('Email').fill('employee@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await page.getByLabel('Description').fill('Request with time-only target');
+  await page.getByLabel('Expected resolution time').fill('09:15');
+  await page.getByRole('button', { name: 'Submit request' }).click();
+  await expect(page.getByRole('dialog', { name: 'Request submitted' })).toContainText('REQ-E2E-1');
+  await page.getByRole('button', { name: 'Continue submitting' }).click();
+
+  await page.getByLabel('Description').fill('Request with date-only target');
+  await page.getByLabel('Expected resolution date').fill('2026-09-28');
+  await page.getByLabel('Expected resolution time').fill('');
+  await page.getByRole('button', { name: 'Submit request' }).click();
+  await expect(page.getByRole('dialog', { name: 'Request submitted' })).toContainText('REQ-E2E-2');
 });
 
 test('Employee workspace shows only the authenticated employee history and no privileged views', async ({ page }) => {

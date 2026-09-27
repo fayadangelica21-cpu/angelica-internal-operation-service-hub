@@ -209,7 +209,8 @@ Authorization: Bearer <FIREBASE_ID_TOKEN>
 
 {
   "departmentId": "DEPT-IT",
-  "description": "Laptop screen flickers"
+  "description": "Laptop screen flickers",
+  "expectedResolutionDate": "2026-10-15T17:30:00.000Z"
 }
 ```
 
@@ -223,12 +224,13 @@ Success (`201`):
   "description": "Laptop screen flickers",
   "status": "Open",
   "ownerId": null,
+  "expectedResolutionDate": "2026-10-15T17:30:00.000Z",
   "createdAt": "...",
   "updatedAt": "..."
 }
 ```
 
-`departmentId` must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`. Description is required (whitespace-only is rejected).
+`departmentId` must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`. Description and at least one expected resolution value (date, time, or both) are required. Date-only means 11:59 PM on the chosen date; time-only means that time on the submission date. The frontend sends the resulting ISO timestamp, which is stored in UTC and displayed in local time. FR9 overdue detection remains separate.
 
 ### View your requests (Employee)
 
@@ -311,10 +313,10 @@ Backend must be running. Git Bash / macOS / Linux syntax:
 curl -X POST http://localhost:3001/requests \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
-  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers"}'
+  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers","expectedResolutionDate":"2026-10-15T17:30:00.000Z"}'
 ```
 
-Expected: `201`, `status=Open`, and `requesterId` equal to the authenticated Firebase UID.
+Expected: `201`, `status=Open`, the requested date persisted, and `requesterId` equal to the authenticated Firebase UID.
 
 **Invalid payload (rejected on purpose)**
 
@@ -393,11 +395,13 @@ npm run test:all
 | Command | What it proves |
 |---|---|
 | `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
-| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request lists, requester-only request details, same-department Staff detail and queue access, cross-department denial, Admin cross-department access and workload summaries, status-history timelines, Staff claim/resolve actions, and Admin assignment/department-reassignment rules. |
+| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including required expected date-time validation and persistence, Employee-owned request lists, requester-only request details, same-department Staff detail and queue access, cross-department denial, Admin cross-department access and workload summaries, status-history timelines, Staff claim/resolve actions, and Admin assignment/department-reassignment rules. |
 | `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
 | `npm run test:all` | All backend tests |
 
 ### E2E
+
+The FR8 E2E flow covers date-only, time-only, and combined date-and-time submission and verifies the resulting value appears in Employee request history.
 
 ```bash
 cd frontend

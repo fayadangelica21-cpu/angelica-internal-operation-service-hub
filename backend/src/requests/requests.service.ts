@@ -48,6 +48,7 @@ export class RequestsService {
         description: dto.description,
         status: RequestStatus.OPEN,
         ownerId: null,
+        expectedResolutionDate: dto.expectedResolutionDate ?? null,
       }));
       const history = manager.getRepository(RequestStatusHistoryEntity);
       await history.save(history.create({
