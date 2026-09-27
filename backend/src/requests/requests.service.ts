@@ -53,6 +53,26 @@ export class RequestsService {
     });
   }
 
+  async getAllRequestsForAdmin(user: CurrentUserData): Promise<(RequestEntity & { ownerDisplayName: string | null })[]> {
+    if (user.role !== 'Admin') {
+      throw new ForbiddenException('Only Admins can view requests across all departments.');
+    }
+    const requests = await this.requestsRepository.find({
+      order: { updatedAt: 'DESC', createdAt: 'DESC' },
+    });
+    const ownerIds = [...new Set(requests.map((request) => request.ownerId).filter((ownerId): ownerId is string => Boolean(ownerId)))];
+    const owners = ownerIds.length > 0
+      ? await this.usersRepository.find({
+        where: { id: In(ownerIds) },
+        select: { id: true, displayName: true, email: true },
+      })
+      : [];
+    const ownerNames = new Map(owners.map((owner) => [owner.id, owner.displayName || owner.email || owner.id]));
+    return requests.map((request) => Object.assign(request, {
+      ownerDisplayName: request.ownerId ? ownerNames.get(request.ownerId) || request.ownerId : null,
+    }));
+  }
+
   async getDepartmentQueue(user: CurrentUserData): Promise<RequestEntity[]> {
     if (user.role !== 'Staff') {
       throw new ForbiddenException('Only department staff can view the department queue.');
