@@ -300,6 +300,16 @@ button {
   gap: 10px;
 }
 
+.department-queue-panel .admin-monitor-actions {
+  flex-wrap: nowrap;
+  align-self: flex-start;
+}
+
+.department-queue-panel > .auth-intro {
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .admin-monitor-toolbar {
   display: flex;
   align-items: end;
@@ -479,6 +489,49 @@ button {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.78);
+}
+
+.admin-deadline-alert {
+  margin-top: 14px;
+  padding: 11px 14px;
+  border: 1px solid #f0d48a;
+  border-radius: 12px;
+  background: var(--tone-warn);
+  color: var(--tone-warn-text);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.admin-request-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.deadline-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.deadline-badge--overdue {
+  border: 1px solid #e7aab0;
+  background: var(--tone-bad);
+  color: var(--tone-bad-text);
+}
+
+.deadline-badge--due-soon {
+  border: 1px solid #f0d48a;
+  background: var(--tone-warn);
+  color: var(--tone-warn-text);
 }
 
 .admin-request-manage-wrap {
@@ -678,7 +731,7 @@ button {
 
 .queue-heading h1 {
   margin: 0;
-  font-size: clamp(1.55rem, 3.5vw, 2rem);
+  font-size: 1.5rem;
 }
 
 .employee-workspace-heading h1 {
@@ -774,6 +827,20 @@ button {
   font-size: 0.7rem;
 }
 
+.queue-request-badges {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.queue-request-badges .deadline-badge {
+  min-height: 24px;
+  padding: 4px 8px;
+  font-size: 0.64rem;
+}
+
 .queue-request-card .submitted-description {
   margin: 8px 0 10px;
   line-height: 1.45;
@@ -784,6 +851,16 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.queue-request-overdue-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .queue-department-label {
@@ -1179,10 +1256,24 @@ textarea:focus {
   font-size: 0.82rem;
 }
 
+.request-history-badges {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
 .request-history-status {
   min-height: 24px;
   padding: 4px 9px;
   font-size: 0.68rem;
+}
+
+.request-history-badges .deadline-badge {
+  min-height: 24px;
+  padding: 4px 8px;
+  font-size: 0.64rem;
 }
 
 .request-history-status--open {
