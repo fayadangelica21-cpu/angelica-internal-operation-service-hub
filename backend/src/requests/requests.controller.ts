@@ -23,6 +23,11 @@ export class RequestsController {
     return this.requestsService.getOwnRequests(user);
   }
 
+  @Get('admin')
+  getAllRequestsForAdmin(@CurrentUser() user: CurrentUserData) {
+    return this.requestsService.getAllRequestsForAdmin(user);
+  }
+
   @Get('queue')
   getDepartmentQueue(@CurrentUser() user: CurrentUserData) {
     return this.requestsService.getDepartmentQueue(user);
