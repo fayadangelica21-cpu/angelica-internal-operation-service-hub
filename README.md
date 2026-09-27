@@ -25,7 +25,7 @@ Open → In Progress → Resolved
 - Admins can assign or reassign a request to a Staff account in that request's department
 - Admins can move an active request to another department; the request returns to the Open queue without its previous Staff owner
 - Admins can monitor requests across IT, HR, and Finance, including current status and owner
-- Employees can view their own submitted requests and current statuses; the backend scopes the list to the verified Firebase UID
+- Employees can view their own requests with a chronological status timeline and change timestamps; the backend scopes the list to the verified Firebase UID and omits internal actor IDs
 - Backend-controlled AI triage step via `POST /triage` with a strict fixed JSON response contract
 - AI payload is bounded to only the information needed for triage; the backend validates the response before showing it
 - Authorization: an employee can create a request as themselves; another employee cannot read it (`403`)
@@ -383,7 +383,7 @@ npm run test:all
 | Command | What it proves |
 |---|---|
 | `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
-| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering, Staff claim/resolve actions, and Admin cross-department monitoring, assignment, and department-reassignment rules. |
+| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering and status-history timelines, Staff claim/resolve actions, and Admin cross-department monitoring, assignment, and department-reassignment rules. |
 | `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
 | `npm run test:all` | All backend tests |
 
@@ -396,7 +396,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin monitoring requests across departments with department filtering, assigning/reassigning Staff, and moving an active request to another department. Admin coverage includes manual list refresh, opening a request with **Manage assignment**, and returning to the filtered list with **Back to requests**. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses and a chronological status timeline, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin monitoring requests across departments with department filtering, assigning/reassigning Staff, and moving an active request to another department. Admin coverage includes manual list refresh, opening a request with **Manage assignment**, and returning to the filtered list with **Back to requests**. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
@@ -473,6 +473,7 @@ project/
 │   │   │   │   ├── reassign-request-department.dto.ts
 │   │   │   │   └── update-status.dto.ts
 │   │   │   ├── entities/
+│   │   │   │   ├── request-status-history.entity.ts
 │   │   │   │   └── request.entity.ts
 │   │   │   └── enums/
 │   │   │       └── request-status.enum.ts
