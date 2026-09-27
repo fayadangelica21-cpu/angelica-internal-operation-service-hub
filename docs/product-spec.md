@@ -19,8 +19,8 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 5. Department staff can update the status of a request.
 6. Department staff can take ownership of requests, and admins can assign or reassign requests to appropriate staff members.
 7. Admins can reassign a request to a different department when it has been submitted to the wrong department.
-8. Requests can have an expected resolution date.
-9. Admins can identify requests that have passed their expected resolution date.
+8. Employees must provide at least an expected resolution date or time when submitting a request, and may provide both. A date without a time means by 11:59 PM on that date; a time without a date applies to the submission date.
+9. Admins can identify requests that have passed their expected resolution date and time.
 10. Employees are notified when the status of their request changes.
 11. Employees can view their complete request history.
 12. Admins can view and monitor all requests across all departments.
@@ -37,7 +37,7 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - Every request belongs to exactly one department.
 - Users are internal company employees only (no external users).
 - Every request is assigned to exactly one department and may initially be unassigned to a specific staff member until someone takes ownership.
-- Requests can have an expected resolution date used to identify overdue requests.
+- Every newly submitted request has an Employee-provided expected resolution target used to identify overdue requests. The Employee may provide a date, a time, or both; the employee enters local time and the system stores the resulting UTC timestamp.
 
 ## 6. Unknowns
 - Do requests need file attachments (e.g. screenshots, documents)?
@@ -45,7 +45,6 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 - Should employees be able to comment back and forth with staff on a request?
 - Will more departments be added later?
 - should employees be able to cancel a request after submitting it?
-- Who sets the expected resolution date, and when should it be assigned?
 
 ## 7. Assumptions / Constraints
 - Assuming single-company, internal use only (not multi-tenant, not for external customers).
@@ -75,6 +74,6 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 
 ## 10. Error / Edge Cases & Bad Scenarios
 - Employee selects the wrong department – The request should not be lost. An admin can reassign it to the correct department, and the employee can see the updated department/status.
-- Request has no assigned staff member – The request remains visible in the department queue. If it passes its expected resolution date, it is marked as overdue and can be assigned or reassigned by an admin.
+- Request has no assigned staff member – The request remains visible in the department queue. If it passes its expected resolution date and time, it is marked as overdue and can be assigned or reassigned by an admin.
 - Staff member is overloaded – An admin can monitor staff workload and reassign a request to another appropriate staff member.
 - Employee tries to access another employee's request – Access is denied, and the employee can only view their own requests.
