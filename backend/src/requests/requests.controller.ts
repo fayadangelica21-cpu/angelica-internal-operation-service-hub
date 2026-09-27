@@ -27,6 +27,11 @@ export class RequestsController {
     return this.requestsService.getDepartmentQueue(user);
   }
 
+  @Get(':id/assignees')
+  getAssignableStaff(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
+    return this.requestsService.getAssignableStaff(user, id);
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: CurrentUserData, @Param('id') id: string) {
     return this.requestsService.findOne(user, id);
