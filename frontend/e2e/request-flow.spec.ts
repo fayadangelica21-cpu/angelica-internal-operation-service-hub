@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
     const isAdmin = token.includes('admin');
     await route.fulfill({ json: { id: token, role: isAdmin ? 'Admin' : isStaff ? 'Staff' : 'Employee', ...(isStaff ? { departmentId: 'DEPT-IT' } : {}) } });
   });
+  await page.route('**/requests/admin/workload', async (route) => route.fulfill({ json: { departments: [], staff: [] } }));
   const staffQueue = [{
     id: 'REQ-IT-QUEUE-001',
     requesterId: 'employee-private-id',
@@ -449,6 +450,18 @@ test('Admin can monitor requests from all departments and refresh the list', asy
     listCalls += 1;
     await route.fulfill({ json: requests });
   });
+  await page.route('**/requests/admin/workload', async (route) => route.fulfill({ json: {
+    departments: [
+      { departmentId: 'DEPT-IT', activeRequestCount: 2, openRequestCount: 1, inProgressRequestCount: 1, unassignedRequestCount: 1 },
+      { departmentId: 'DEPT-HR', activeRequestCount: 1, openRequestCount: 0, inProgressRequestCount: 1, unassignedRequestCount: 0 },
+      { departmentId: 'DEPT-FINANCE', activeRequestCount: 0, openRequestCount: 0, inProgressRequestCount: 0, unassignedRequestCount: 0 },
+    ],
+    staff: [
+      { staffId: 'staff-it-one', staffName: 'IT One', departmentId: 'DEPT-IT', activeRequestCount: 1, openRequestCount: 0, inProgressRequestCount: 1 },
+      { staffId: 'staff-hr-one', staffName: 'HR One', departmentId: 'DEPT-HR', activeRequestCount: 1, openRequestCount: 0, inProgressRequestCount: 1 },
+      { staffId: 'staff-finance-one', staffName: 'Finance One', departmentId: 'DEPT-FINANCE', activeRequestCount: 0, openRequestCount: 0, inProgressRequestCount: 0 },
+    ],
+  } }));
   await page.route('**/requests/REQ-ADMIN-LIST-HR', async (route) => route.fulfill({ json: requests[1] }));
   await page.route('**/requests/REQ-ADMIN-LIST-HR/assignees', async (route) => route.fulfill({ json: [
     { id: 'staff-hr-one', displayName: 'HR One', email: 'hr.one@example.test' },
@@ -461,7 +474,7 @@ test('Admin can monitor requests from all departments and refresh the list', asy
 
   await expect(page.getByRole('heading', { name: 'All requests' })).toBeVisible();
   const monitor = page.getByRole('region', { name: 'All requests across departments' });
-  await expect(monitor.getByRole('article')).toHaveCount(3);
+  await expect(monitor.locator('.admin-request-card')).toHaveCount(3);
   await expect(monitor).toContainText('IT request for monitoring');
   await expect(monitor).toContainText('HR request for monitoring');
   await expect(monitor).toContainText('Finance request for monitoring');
@@ -470,12 +483,12 @@ test('Admin can monitor requests from all departments and refresh the list', asy
   await expect(resolvedRequestCard.getByRole('button', { name: 'Manage assignment' })).toBeDisabled();
   const assignmentHelp = resolvedRequestCard.getByRole('tooltip');
   await expect(assignmentHelp).toBeHidden();
-  await resolvedRequestCard.locator('.admin-request-manage-wrap').hover();
+  await resolvedRequestCard.locator('.admin-request-manage-wrap').focus();
   await expect(assignmentHelp).toBeVisible();
   await expect(assignmentHelp).toHaveText('Resolved requests cannot be assigned.');
 
   await page.getByLabel('Department', { exact: true }).selectOption('DEPT-HR');
-  await expect(monitor.getByRole('article')).toHaveCount(1);
+  await expect(monitor.locator('.admin-request-card')).toHaveCount(1);
   await expect(monitor).toContainText('HR request for monitoring');
   await expect(monitor).not.toContainText('IT request for monitoring');
   await expect(monitor).not.toContainText('Finance request for monitoring');
@@ -489,11 +502,27 @@ test('Admin can monitor requests from all departments and refresh the list', asy
   await expect(page.getByLabel('Department', { exact: true })).toHaveValue('DEPT-HR');
 
   await page.getByLabel('Department', { exact: true }).selectOption('ALL');
-  await expect(monitor.getByRole('article')).toHaveCount(3);
+  await expect(monitor.locator('.admin-request-card')).toHaveCount(3);
 
   await page.getByRole('button', { name: 'Refresh requests' }).click();
   await expect.poll(() => listCalls).toBeGreaterThan(1);
-  await expect(monitor.getByRole('article')).toHaveCount(3);
+  await expect(monitor.locator('.admin-request-card')).toHaveCount(3);
+
+  await page.getByRole('button', { name: 'View workload' }).click();
+  const workload = page.getByRole('region', { name: 'Workload overview' });
+  await expect(workload).toBeVisible();
+  await expect(workload.locator('.admin-department-workload')).toHaveCount(3);
+  await expect(workload.locator('.admin-department-workload').filter({ hasText: 'IT' })).toContainText('2');
+  await expect(workload.getByRole('row')).toHaveCount(4);
+  await expect(workload).toContainText('IT One');
+  await expect(workload).toContainText('Finance One');
+  await page.getByLabel('Department', { exact: true }).selectOption('DEPT-HR');
+  await expect(workload.locator('.admin-department-workload')).toHaveCount(1);
+  await expect(workload.getByRole('row')).toHaveCount(2);
+  await expect(workload).toContainText('HR One');
+  await expect(workload).not.toContainText('IT One');
+  await page.getByRole('button', { name: 'Back to requests' }).click();
+  await expect(monitor).toBeVisible();
 });
 
 test('a delayed profile response from an older account cannot replace the current login', async ({ page }) => {
