@@ -119,6 +119,7 @@ test('employee can submit a request and see the persisted lifecycle starting sta
       {
         id: 'REQ-E2E-2', requesterId: 'e2e-employee@example.test', departmentId: 'DEPT-HR',
         description: 'Need help understanding my leave balance', status: 'In Progress', createdAt: new Date().toISOString(),
+        expectedResolutionDate: new Date(Date.now() - 60_000).toISOString(), deadlineStatus: 'overdue',
         statusHistory: [
           { historyId: 'REQ-E2E-2-OPEN', fromStatus: null, toStatus: 'Open', changedAt: new Date(Date.now() - 3000).toISOString() },
           { historyId: 'REQ-E2E-2-PROGRESS', fromStatus: 'Open', toStatus: 'In Progress', changedAt: new Date(Date.now() - 1000).toISOString() },
@@ -127,6 +128,7 @@ test('employee can submit a request and see the persisted lifecycle starting sta
       {
         id: 'REQ-E2E-1', requesterId: 'e2e-employee@example.test', departmentId: 'DEPT-IT',
         description: 'Laptop screen flickers', status: 'Resolved', createdAt: new Date(Date.now() - 1000).toISOString(),
+        expectedResolutionDate: new Date(Date.now() - 60_000).toISOString(), deadlineStatus: null,
         statusHistory: [
           { historyId: 'REQ-E2E-1-OPEN', fromStatus: null, toStatus: 'Open', changedAt: new Date(Date.now() - 5000).toISOString() },
           { historyId: 'REQ-E2E-1-PROGRESS', fromStatus: 'Open', toStatus: 'In Progress', changedAt: new Date(Date.now() - 3000).toISOString() },
@@ -138,6 +140,9 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await page.getByRole('button', { name: 'Refresh requests' }).click();
   await expect(requestHistory.locator('.request-history-card').nth(0)).toContainText('In Progress');
   await expect(requestHistory.locator('.request-history-card').nth(1)).toContainText('Resolved');
+  await expect(requestHistory.locator('.request-history-card').nth(0).locator('.deadline-badge--overdue')).toHaveText('Overdue');
+  await expect(requestHistory.locator('.request-history-card').nth(1).locator('.deadline-badge')).toHaveCount(0);
+  await expect(requestHistory.getByRole('alert')).toHaveCount(0);
   const resolvedTimeline = requestHistory.getByRole('list', { name: 'Status history for request REQ-E2E-1' });
   await expect(resolvedTimeline).toContainText('Submitted as Open');
   await expect(resolvedTimeline).toContainText('Open → In Progress');
@@ -267,6 +272,8 @@ test('Staff can take ownership of a request and resolve it from their department
       description: 'IT request visible to the IT team',
       status: 'Open',
       ownerId: null as string | null,
+      expectedResolutionDate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      deadlineStatus: 'due-soon',
     },
     {
       id: 'REQ-IT-QUEUE-002',
@@ -278,6 +285,14 @@ test('Staff can take ownership of a request and resolve it from their department
     },
   ];
   await page.route('**/requests/queue', async (route) => route.fulfill({ json: staffQueue }));
+  await page.route('**/requests/queue/overdue', async (route) => route.fulfill({ json: [{
+    id: 'REQ-IT-OVERDUE-001',
+    departmentId: 'DEPT-IT',
+    description: 'Request overdue within the last week',
+    status: 'In Progress',
+    expectedResolutionDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    deadlineStatus: 'overdue',
+  }] }));
   await page.route('**/requests/admin', async (route) => route.fulfill({ json: [] }));
   await page.route('**/requests/REQ-IT-QUEUE-001/assign', async (route) => {
     staffQueue[0].ownerId = 'e2e-it.staff@example.test';
@@ -297,7 +312,18 @@ test('Staff can take ownership of a request and resolve it from their department
   await expect(page.getByRole('heading', { name: 'IT request queue' })).toBeVisible();
   const resolvingRequest = page.getByRole('article').filter({ hasText: 'REQ-IT-QUEUE-001' });
   const otherRequest = page.getByRole('article').filter({ hasText: 'REQ-IT-QUEUE-002' });
+  await page.getByRole('button', { name: 'Weekly overdue' }).click();
+  await expect(page.getByRole('heading', { name: 'Overdue requests' })).toBeVisible();
+  const overdueList = page.getByLabel('Overdue requests');
+  const overdueCard = overdueList.getByRole('article');
+  await expect(overdueCard).toContainText('Request overdue within the last week');
+  await expect(overdueCard.locator('.deadline-badge--overdue')).toHaveText('Overdue');
+  await expect(overdueCard.getByRole('button')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'IT request queue' })).toBeVisible();
   await expect(resolvingRequest).toContainText('IT request visible to the IT team');
+  await expect(resolvingRequest.locator('.deadline-badge--due-soon')).toHaveText('Due soon');
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(otherRequest).toBeVisible();
   await expect(page.getByText('employee-private-id', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Submit request' })).toHaveCount(0);
@@ -378,7 +404,7 @@ test('Staff see a clear message if another staff member already took the request
     }] });
   });
   await page.getByRole('button', { name: 'Refresh queue' }).click();
-  await expect(page.getByRole('button', { name: /Refreshing queue/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Refreshing/ })).toBeDisabled();
   await expect(page.getByRole('article')).toContainText('Open');
   await expect(page.getByRole('status')).toHaveCount(0);
   await expect(page.getByText('In Progress', { exact: true })).toBeVisible();
@@ -468,9 +494,10 @@ test('Admin can assign, reassign, and move a request to another department', asy
 
 test('Admin can monitor requests from all departments and refresh the list', async ({ page }) => {
   const requests = [
-    { id: 'REQ-ADMIN-LIST-IT', departmentId: 'DEPT-IT', description: 'IT request for monitoring', status: 'Open', ownerId: null, ownerDisplayName: null },
-    { id: 'REQ-ADMIN-LIST-HR', departmentId: 'DEPT-HR', description: 'HR request for monitoring', status: 'In Progress', ownerId: 'staff-hr-one', ownerDisplayName: 'HR One' },
-    { id: 'REQ-ADMIN-LIST-FINANCE', departmentId: 'DEPT-FINANCE', description: 'Finance request for monitoring', status: 'Resolved', ownerId: null, ownerDisplayName: null },
+    { id: 'REQ-ADMIN-LIST-IT', departmentId: 'DEPT-IT', description: 'IT request for monitoring', status: 'Open', ownerId: null, ownerDisplayName: null, expectedResolutionDate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), deadlineStatus: 'due-soon' },
+    { id: 'REQ-ADMIN-LIST-HR', departmentId: 'DEPT-HR', description: 'HR request for monitoring', status: 'In Progress', ownerId: 'staff-hr-one', ownerDisplayName: 'HR One', expectedResolutionDate: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(), deadlineStatus: null },
+    { id: 'REQ-ADMIN-LIST-FINANCE', departmentId: 'DEPT-FINANCE', description: 'Finance request for monitoring', status: 'Resolved', ownerId: null, ownerDisplayName: null, expectedResolutionDate: new Date(Date.now() - 60_000).toISOString(), deadlineStatus: null },
+    { id: 'REQ-ADMIN-LIST-OVERDUE', departmentId: 'DEPT-FINANCE', description: 'Finance overdue request', status: 'Open', ownerId: null, ownerDisplayName: null, expectedResolutionDate: new Date(Date.now() - 60_000).toISOString(), deadlineStatus: 'overdue' },
   ];
   let listCalls = 0;
   await page.route('**/requests/admin', async (route) => {
@@ -501,12 +528,25 @@ test('Admin can monitor requests from all departments and refresh the list', asy
 
   await expect(page.getByRole('heading', { name: 'All requests' })).toBeVisible();
   const monitor = page.getByRole('region', { name: 'All requests across departments' });
-  await expect(monitor.locator('.admin-request-card')).toHaveCount(3);
+  await expect(monitor.locator('.admin-request-card')).toHaveCount(4);
   await expect(monitor).toContainText('IT request for monitoring');
   await expect(monitor).toContainText('HR request for monitoring');
   await expect(monitor).toContainText('Finance request for monitoring');
+  await expect(monitor).toContainText('Finance overdue request');
   await expect(monitor).toContainText('HR One');
+  await expect(monitor.getByRole('alert')).toHaveText('Attention: 1 active request is due within 3 hours.');
+  const overdueRequestCard = monitor.getByRole('article').filter({ hasText: 'Finance overdue request' });
+  await expect(overdueRequestCard.locator('.deadline-badge--overdue')).toHaveText('Overdue');
+  const overdueAssignmentButton = overdueRequestCard.getByRole('button', { name: 'Manage assignment' });
+  await expect(overdueAssignmentButton).toBeDisabled();
+  const overdueAssignmentHelp = overdueRequestCard.getByRole('tooltip');
+  await expect(overdueAssignmentHelp).toBeHidden();
+  await overdueRequestCard.locator('.admin-request-manage-wrap').focus();
+  await expect(overdueAssignmentHelp).toHaveText('Overdue requests cannot be assigned.');
+  const dueSoonRequestCard = monitor.getByRole('article').filter({ hasText: 'IT request for monitoring' });
+  await expect(dueSoonRequestCard.locator('.deadline-badge--due-soon')).toHaveText('Due soon');
   const resolvedRequestCard = monitor.getByRole('article').filter({ hasText: 'Finance request for monitoring' });
+  await expect(resolvedRequestCard.locator('.deadline-badge')).toHaveCount(0);
   await expect(resolvedRequestCard.getByRole('button', { name: 'Manage assignment' })).toBeDisabled();
   const assignmentHelp = resolvedRequestCard.getByRole('tooltip');
   await expect(assignmentHelp).toBeHidden();
@@ -519,7 +559,8 @@ test('Admin can monitor requests from all departments and refresh the list', asy
   await expect(monitor).toContainText('HR request for monitoring');
   await expect(monitor).not.toContainText('IT request for monitoring');
   await expect(monitor).not.toContainText('Finance request for monitoring');
-  await expect(monitor).toContainText('Showing 1 of 3 requests');
+  await expect(monitor).not.toContainText('Finance overdue request');
+  await expect(monitor).toContainText('Showing 1 of 4 requests');
 
   await monitor.getByRole('button', { name: 'Manage assignment' }).click();
   await expect(monitor).toHaveCount(0);
@@ -529,11 +570,11 @@ test('Admin can monitor requests from all departments and refresh the list', asy
   await expect(page.getByLabel('Department', { exact: true })).toHaveValue('DEPT-HR');
 
   await page.getByLabel('Department', { exact: true }).selectOption('ALL');
-  await expect(monitor.locator('.admin-request-card')).toHaveCount(3);
+  await expect(monitor.locator('.admin-request-card')).toHaveCount(4);
 
   await page.getByRole('button', { name: 'Refresh requests' }).click();
   await expect.poll(() => listCalls).toBeGreaterThan(1);
-  await expect(monitor.locator('.admin-request-card')).toHaveCount(3);
+  await expect(monitor.locator('.admin-request-card')).toHaveCount(4);
 
   await page.getByRole('button', { name: 'View workload' }).click();
   const workload = page.getByRole('region', { name: 'Workload overview' });
