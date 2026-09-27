@@ -465,9 +465,25 @@ function RequestApp() {
                     {item.createdAt && <span><strong>Submitted</strong>{formatSubmittedAt(item.createdAt) || 'Unknown'}</span>}
                     {item.updatedAt && <span><strong>Last updated</strong>{formatSubmittedAt(item.updatedAt) || 'Unknown'}</span>}
                   </div>
-                  <button className="btn btn-secondary admin-request-manage" type="button" onClick={() => void openAdminAssignment(item)}>
-                    Manage assignment
-                  </button>
+                  <span
+                    className="admin-request-manage-wrap"
+                    tabIndex={item.status === 'Resolved' ? 0 : undefined}
+                    aria-describedby={item.status === 'Resolved' ? `resolved-assignment-help-${item.id}` : undefined}
+                  >
+                    <button
+                      className="btn btn-secondary admin-request-manage"
+                      type="button"
+                      onClick={() => void openAdminAssignment(item)}
+                      disabled={item.status === 'Resolved'}
+                    >
+                      Manage assignment
+                    </button>
+                    {item.status === 'Resolved' && (
+                      <span className="admin-request-manage-help" role="tooltip" id={`resolved-assignment-help-${item.id}`}>
+                        Resolved requests cannot be assigned.
+                      </span>
+                    )}
+                  </span>
                 </article>
               ))}
             </div>
@@ -763,6 +779,23 @@ function RequestApp() {
                       <div className="request-history-meta">
                         <span>{getDepartmentLabel(item.departmentId)}</span>
                         {submittedAt && <time dateTime={item.createdAt}>{submittedAt}</time>}
+                      </div>
+                      <div className="request-history-timeline-block">
+                        <h3>Status history</h3>
+                        {item.statusHistory && item.statusHistory.length > 0 ? (
+                          <ol className="request-history-timeline" aria-label={`Status history for request ${item.id}`}>
+                            {item.statusHistory.map((event) => (
+                              <li key={event.historyId}>
+                                <span className="request-history-event-status">
+                                  {event.fromStatus ? `${event.fromStatus} → ${event.toStatus}` : `Submitted as ${event.toStatus}`}
+                                </span>
+                                <time dateTime={event.changedAt}>{formatSubmittedAt(event.changedAt) || 'Time unavailable'}</time>
+                              </li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <p className="request-history-no-events">Status history is not available for this request.</p>
+                        )}
                       </div>
                     </article>
                   );
