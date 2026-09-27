@@ -11,6 +11,12 @@ export type RequestRecord = {
   createdAt?: string;
 };
 
+export type AssignableStaff = {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+};
+
 export type TriageSuggestion = {
   draftId: string;
   departmentId: 'DEPT-IT' | 'DEPT-HR' | 'DEPT-FINANCE' | null;
@@ -83,6 +89,36 @@ export async function getDepartmentQueue(): Promise<RequestRecord[]> {
   return body as RequestRecord[];
 }
 
+async function getAuthenticatedJson<T>(path: string, errorMessage: string): Promise<T> {
+  let response: Response;
+  try {
+    const token = await getAuthToken();
+    response = await fetch(`${API_URL}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+  }
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(readErrorMessage(body));
+  if (body === null || typeof body !== 'object') throw new Error(errorMessage);
+  return body as T;
+}
+
+export function getRequestForAssignment(id: string): Promise<RequestRecord> {
+  return getAuthenticatedJson<RequestRecord>(`/requests/${encodeURIComponent(id)}`, 'The request response was invalid.');
+}
+
+export async function getAssignableStaff(requestId: string): Promise<AssignableStaff[]> {
+  const body = await getAuthenticatedJson<unknown>(
+    `/requests/${encodeURIComponent(requestId)}/assignees`,
+    'The staff list response was invalid.',
+  );
+  if (!Array.isArray(body)) throw new Error('The staff list response was invalid.');
+  return body as AssignableStaff[];
+}
+
 async function patchRequest(id: string, action: 'assign' | 'status', payload: object): Promise<RequestRecord> {
   let response: Response;
   try {
@@ -102,6 +138,10 @@ async function patchRequest(id: string, action: 'assign' | 'status', payload: ob
 }
 
 export function takeOwnership(id: string, ownerId: string): Promise<RequestRecord> {
+  return patchRequest(id, 'assign', { ownerId });
+}
+
+export function assignRequestToStaff(id: string, ownerId: string): Promise<RequestRecord> {
   return patchRequest(id, 'assign', { ownerId });
 }
 
