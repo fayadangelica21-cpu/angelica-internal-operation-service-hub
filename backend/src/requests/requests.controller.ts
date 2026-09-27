@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGua
 import { AssignRequestDto } from './dto/assign-request.dto';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { ReassignRequestDepartmentDto } from './dto/reassign-request-department.dto';
 import { RequestsService } from './requests.service';
 import { CurrentUser, CurrentUserData } from './current-user';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
@@ -40,6 +41,11 @@ export class RequestsController {
   @Patch(':id/assign')
   assign(@CurrentUser() user: CurrentUserData, @Param('id') id: string, @Body() dto: AssignRequestDto) {
     return this.requestsService.assign(user, id, dto);
+  }
+
+  @Patch(':id/department')
+  reassignDepartment(@CurrentUser() user: CurrentUserData, @Param('id') id: string, @Body() dto: ReassignRequestDepartmentDto) {
+    return this.requestsService.reassignDepartment(user, id, dto);
   }
 
   @Patch(':id/status')
