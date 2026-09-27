@@ -205,7 +205,9 @@ expected_resolution_date < current UTC instant
 AND request is not yet resolved
 ```
 
-`is_overdue` should be **derived**, not stored as an independent durable field, because the condition changes with time and can become stale.
+An active request is **due soon** when its expected resolution timestamp is after the current UTC instant and no more than three hours away. Resolved requests are neither overdue nor due soon. Both states are derived from the stored timestamp and current status; they must not be stored as durable fields because they change with time.
+
+The Employee request-history response exposes `overdue` or `null` only for that authenticated Employee's requests. The Staff active department queue excludes overdue requests and exposes `due-soon` or `null`, shown as an inline mark without an alert. A separate Staff overdue queue returns active overdue requests in the same department whose deadlines fell within the previous seven days; requests overdue longer are excluded from both Staff views. The Admin request-list response exposes `overdue`, `due-soon`, or `null` across departments. The Employee and Admin UIs mark overdue requests in red; the Admin UI also displays an in-app alert while one or more active requests are due within three hours. Existing list refresh keeps these indicators current.
 
 Traceability: FR8–FR9, edge case §10, architecture §2.3.
 
@@ -240,7 +242,7 @@ Traceability: FR13, FR4–FR7, FR12, FR14, edge case §10; architecture §3.1.
 | Status history | Durable | Required full request history |
 | User role/department | Durable/authoritative from identity context | Needed for authorization decisions |
 | AI triage suggestion payload | Temporary / non-durable | Only a recommendation before the final request is submitted |
-| `is_overdue` | **Derived** | Depends on current UTC time + expected resolution timestamp + current state |
+| Deadline status (`overdue` / `due-soon`) | **Derived** | Depends on current UTC time + expected resolution timestamp + current state |
 | Department queue membership | **Derived** | Query of requests by department/status |
 | Active vs resolved queue | **Derived** | Query of current status |
 | Admin workload view | **Derived** | Aggregate of requests/owners/departments |
@@ -291,6 +293,8 @@ Supports: FR3, FR11, FR13.
 ```text
 Find requests where department_id = current_staff.department
 and the request is active.
+The active queue excludes overdue requests; a separate overdue view includes only requests
+whose expected resolution deadline is within the previous seven days.
 ```
 
 Supports: FR4, FR13.
@@ -315,9 +319,13 @@ Supports: FR12.
 ### AP5 — Admin finds overdue requests
 
 ```text
-Find requests whose expected_resolution_date timestamp is before now
-and whose current status is not Resolved.
+Derive deadline status for each request:
+- overdue when expected_resolution_date is at or before now and status is not Resolved;
+- due-soon when expected_resolution_date is after now and within three hours and status is not Resolved;
+- otherwise no deadline indicator.
 ```
+
+Return overdue status to the owning Employee's request history, due-soon status to the authorized Staff department queue, and full deadline status to the Admin request list. Show overdue in red, show due-soon as a mark in the Staff queue, disable the Admin UI's Manage assignment control for overdue requests, and show an Admin three-hour warning for due-soon requests. Do not persist the derived status.
 
 Supports: FR9.
 
@@ -351,8 +359,8 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 | Status | Requirement(s) | Rationale |
 |---|---|---|
-| Implemented | FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR11, FR12, FR13, FR14 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to a Staff profile in the request's own department. FR7 lets Admins move an active request to a different supported department; the backend clears its owner, returns it to `Open`, validates authorization and department values, and rejects resolved requests. FR8 lets the Employee provide a date, a time, or both for the expected resolution; the client applies the documented default when one part is omitted, the backend validates and persists the UTC timestamp, and Employee, Staff, and Admin views display it in local time. HTTP, SQLite integration, and Playwright tests cover validation, persistence, and submission. FR11 records each status transition and displays the chronological timeline in the Employee's own request history; initial submission, assignment, resolution, and private history filtering are covered by HTTP, SQLite integration, and Playwright tests. FR12 gives Admins a cross-department request list with status, owner, and timing details, plus manual and automatic refresh. FR13 enforces Employee ownership and Staff department boundaries server-side, with Admin cross-department access; request-list, queue, detail, and protected-action boundaries are covered by HTTP and SQLite integration tests, while Playwright verifies authenticated Employee history and role-specific views. FR14 gives Admins department totals and each registered Staff member's active, Open, and In Progress assignment counts; resolved requests are excluded, zero-workload Staff remain visible, and the department selector filters the dedicated workload view. HTTP, SQLite integration, and Playwright tests cover the workload endpoint, calculations, authorization, and dashboard. |
-| Not implemented | FR9, FR10 | These requirements are not yet implemented and verified end-to-end. |
+| Implemented | FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR11, FR12, FR13, FR14 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to a Staff profile in the request's own department. FR7 lets Admins move an active request to a different supported department; the backend clears its owner, returns it to `Open`, validates authorization and department values, and rejects resolved requests. FR8 lets the Employee provide a date, a time, or both for the expected resolution; the client applies the documented default when one part is omitted, the backend validates and persists the UTC timestamp, and Employee, Staff, and Admin views display it in local time. HTTP, SQLite integration, and Playwright tests cover validation, persistence, and submission. FR9 derives `overdue` for active requests past their deadline and `due-soon` for active requests due within three hours; Employees see their own overdue requests in red, Staff see an inline Due soon mark in their department queue, and the Admin list marks overdue requests in red, disables Manage assignment for overdue requests, and displays a three-hour alert. Resolved requests are excluded. HTTP, SQLite integration, and Playwright tests cover deadline classification and role-specific indicators. FR11 records each status transition and displays the chronological timeline in the Employee's own request history; initial submission, assignment, resolution, and private history filtering are covered by HTTP, SQLite integration, and Playwright tests. FR12 gives Admins a cross-department request list with status, owner, and timing details, plus manual and automatic refresh. FR13 enforces Employee ownership and Staff department boundaries server-side, with Admin cross-department access; request-list, queue, detail, and protected-action boundaries are covered by HTTP and SQLite integration tests, while Playwright verifies authenticated Employee history and role-specific views. FR14 gives Admins department totals and each registered Staff member's active, Open, and In Progress assignment counts; resolved requests are excluded, zero-workload Staff remain visible, and the department selector filters the dedicated workload view. HTTP, SQLite integration, and Playwright tests cover the workload endpoint, calculations, authorization, and dashboard. |
+| Not implemented | FR10 | This requirement is not yet implemented and verified end-to-end. |
 
 ### 9.2 Requirement-to-model mapping
 
@@ -412,7 +420,7 @@ The following product unknowns may require future model changes:
 3. Will requests have priority levels?
 4. Will employees and staff exchange comments?
 5. Can employees cancel requests?
-6. What overdue behavior should follow when a request passes its expected resolution timestamp? (FR9 remains unimplemented; notifications are tracked separately under FR10.)
+6. Should future versions add configurable warning windows or escalation rules beyond the three-hour Admin warning?
 
 These questions are deliberately recorded rather than silently answered in the v0.1 model.
 
