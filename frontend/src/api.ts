@@ -10,6 +10,7 @@ export type RequestRecord = {
   ownerId?: string | null;
   ownerDisplayName?: string | null;
   expectedResolutionDate?: string | null;
+  deadlineStatus?: 'overdue' | 'due-soon' | null;
   createdAt?: string;
   updatedAt?: string;
   statusHistory?: RequestStatusHistoryRecord[];
@@ -133,6 +134,12 @@ export async function getDepartmentQueue(): Promise<RequestRecord[]> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(readErrorMessage(body));
   if (!Array.isArray(body)) throw new Error('The department queue response was invalid.');
+  return body as RequestRecord[];
+}
+
+export async function getDepartmentOverdueQueue(): Promise<RequestRecord[]> {
+  const body = await getAuthenticatedJson<unknown>('/requests/queue/overdue', 'The overdue request list response was invalid.');
+  if (!Array.isArray(body)) throw new Error('The overdue request list response was invalid.');
   return body as RequestRecord[];
 }
 
