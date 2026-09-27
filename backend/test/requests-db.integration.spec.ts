@@ -66,6 +66,30 @@ describe('RequestsService database integration', () => {
     expect(ownRequests.every((request) => request.requesterId === 'EMP-OWN-LIST')).toBe(true);
   });
 
+  it('includes an overdue indicator only for the Employee’s own active requests', async () => {
+    const pastDeadline = new Date(Date.now() - 60_000).toISOString();
+    const overdue = await service.create(
+      { id: 'EMP-FR9-OWN', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'My overdue request', expectedResolutionDate: pastDeadline },
+    );
+    const resolved = await service.create(
+      { id: 'EMP-FR9-OWN', role: 'Employee' },
+      { departmentId: 'DEPT-HR', description: 'My resolved request', expectedResolutionDate: pastDeadline },
+    );
+    await repository.update(resolved.id, { status: RequestStatus.RESOLVED });
+    const anotherEmployeesOverdue = await service.create(
+      { id: 'EMP-FR9-OTHER', role: 'Employee' },
+      { departmentId: 'DEPT-FINANCE', description: 'Another employee’s overdue request', expectedResolutionDate: pastDeadline },
+    );
+
+    const ownRequests = await service.getOwnRequests({ id: 'EMP-FR9-OWN', role: 'Employee' });
+    const statuses = new Map(ownRequests.map((item) => [item.id, item.deadlineStatus]));
+
+    expect(statuses.get(overdue.id)).toBe('overdue');
+    expect(statuses.get(resolved.id)).toBeNull();
+    expect(statuses.has(anotherEmployeesOverdue.id)).toBe(false);
+  });
+
   it('enforces database-backed request detail access by requester, department, and Admin role', async () => {
     const itRequest = await service.create(
       { id: 'EMP-DETAIL-IT', role: 'Employee' },
@@ -94,11 +118,19 @@ describe('RequestsService database integration', () => {
   it('queries the active queue using the authenticated Staff department', async () => {
     const itRequest = await service.create(
       { id: 'EMP-IT-QUEUE', role: 'Employee' },
-      { departmentId: 'DEPT-IT', description: 'IT queue integration record' },
+      { departmentId: 'DEPT-IT', description: 'IT queue integration record', expectedResolutionDate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() },
     );
     const hrRequest = await service.create(
       { id: 'EMP-HR-QUEUE', role: 'Employee' },
       { departmentId: 'DEPT-HR', description: 'HR record must not leak into IT queue' },
+    );
+    const recentOverdueRequest = await service.create(
+      { id: 'EMP-IT-RECENT-OVERDUE', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Recent overdue request', expectedResolutionDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() },
+    );
+    const expiredOverdueRequest = await service.create(
+      { id: 'EMP-IT-EXPIRED-OVERDUE', role: 'Employee' },
+      { departmentId: 'DEPT-IT', description: 'Overdue for more than a week', expectedResolutionDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString() },
     );
 
     const queue = await service.getDepartmentQueue({
@@ -112,6 +144,19 @@ describe('RequestsService database integration', () => {
     expect(queueIds).not.toContain(hrRequest.id);
     expect(queue.every((request) => request.departmentId === 'DEPT-IT')).toBe(true);
     expect(queue.every((request) => request.status !== RequestStatus.RESOLVED)).toBe(true);
+    expect(queue.find((request) => request.id === itRequest.id)?.deadlineStatus).toBe('due-soon');
+    expect(queue.map((request) => request.id)).not.toContain(recentOverdueRequest.id);
+    expect(queue.map((request) => request.id)).not.toContain(expiredOverdueRequest.id);
+
+    const overdueQueue = await service.getOverdueDepartmentQueue({
+      id: 'STAFF-IT-QUEUE',
+      role: 'Staff',
+      departmentId: 'DEPT-IT',
+    });
+    expect(overdueQueue.map((request) => request.id)).toContain(recentOverdueRequest.id);
+    expect(overdueQueue.find((request) => request.id === recentOverdueRequest.id)?.deadlineStatus).toBe('overdue');
+    expect(overdueQueue.map((request) => request.id)).not.toContain(expiredOverdueRequest.id);
+    expect(overdueQueue.map((request) => request.id)).not.toContain(hrRequest.id);
   });
 
   it('persists ownership and the status transitions from Open to In Progress to Resolved', async () => {
@@ -247,6 +292,31 @@ describe('RequestsService database integration', () => {
     ]));
     await expect(service.getAllRequestsForAdmin({ id: 'STAFF-IT-LIST', role: 'Staff', departmentId: 'DEPT-IT' }))
       .rejects.toThrow('Only Admins can view requests across all departments.');
+  });
+
+  it('derives overdue and due-soon states for active requests and excludes resolved requests', async () => {
+    const now = Date.now();
+    const createWithDeadline = (id: string, deadline: number) => service.create(
+      { id: `EMP-${id}`, role: 'Employee' },
+      {
+        departmentId: 'DEPT-IT',
+        description: `${id} deadline case`,
+        expectedResolutionDate: new Date(deadline).toISOString(),
+      },
+    );
+    const overdue = await createWithDeadline('FR9-OVERDUE', now - 60_000);
+    const dueSoon = await createWithDeadline('FR9-DUE-SOON', now + 2 * 60 * 60 * 1000);
+    const outsideWarningWindow = await createWithDeadline('FR9-NOT-DUE-SOON', now + 4 * 60 * 60 * 1000);
+    const resolved = await createWithDeadline('FR9-RESOLVED', now - 60_000);
+    await repository.update(resolved.id, { status: RequestStatus.RESOLVED });
+
+    const requests = await service.getAllRequestsForAdmin({ id: 'ADMIN-FR9', role: 'Admin' });
+    const deadlineStatus = new Map(requests.map((item) => [item.id, item.deadlineStatus]));
+
+    expect(deadlineStatus.get(overdue.id)).toBe('overdue');
+    expect(deadlineStatus.get(dueSoon.id)).toBe('due-soon');
+    expect(deadlineStatus.get(outsideWarningWindow.id)).toBeNull();
+    expect(deadlineStatus.get(resolved.id)).toBeNull();
   });
 
   it('aggregates active workload by department and Staff member while excluding resolved requests', async () => {
