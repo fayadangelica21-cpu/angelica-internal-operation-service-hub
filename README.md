@@ -23,6 +23,7 @@ Open → In Progress → Resolved
 - SQLite persistence through TypeORM
 - Firebase-authenticated Staff can view active requests in their assigned department; the backend derives the department from the verified identity
 - Admins can assign or reassign a request to a Staff account in that request's department
+- Admins can move an active request to another department; the request returns to the Open queue without its previous Staff owner
 - Employees can view their own submitted requests and current statuses; the backend scopes the list to the verified Firebase UID
 - Backend-controlled AI triage step via `POST /triage` with a strict fixed JSON response contract
 - AI payload is bounded to only the information needed for triage; the backend validates the response before showing it
@@ -276,6 +277,8 @@ Authorization: Bearer <ADMIN_FIREBASE_ID_TOKEN>
 
 Returns eligible Staff profiles for that request's department. Admins can assign an unassigned `Open` request or reassign an `In Progress` request with `PATCH /requests/:id/assign` and `{ "ownerId": "<staff Firebase UID>" }`. Assigning an `Open` request moves it to `In Progress`; reassignment preserves its current status. Resolved requests cannot be assigned. Staff can still take ownership of an unassigned request through the same PATCH route, but cannot reassign an existing owner.
 
+To correct a request routed to the wrong department, Admins can use `PATCH /requests/:id/department` with `{ "departmentId": "DEPT-HR" }`. The target department must be `DEPT-IT`, `DEPT-HR`, or `DEPT-FINANCE`, and must differ from the request's current department. Moving an active request clears its current Staff owner and returns it to `Open` in the destination department queue. Resolved requests cannot be moved. Employees and Staff receive `403 Forbidden`.
+
 ---
 
 ## Boundary checks (curl)
@@ -370,7 +373,7 @@ npm run test:all
 | Command | What it proves |
 |---|---|
 | `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
-| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering, Staff claim/resolve actions, and Admin assignment rules. |
+| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering, Staff claim/resolve actions, and Admin assignment and department-reassignment rules. |
 | `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
 | `npm run test:all` | All backend tests |
 
@@ -383,7 +386,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin assignment/reassignment to Staff in the request's department. The Admin assignment test also verifies that **New lookup** clears the current request ID, selected request, and success message so the Admin can start another lookup without signing out. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin assignment, reassignment, and moving an active request to another department. The Admin assignment test also verifies that **New lookup** clears the current request ID, selected request, and success message so the Admin can start another lookup without signing out. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
@@ -457,6 +460,7 @@ project/
 │   │   │   ├── dto/
 │   │   │   │   ├── assign-request.dto.ts
 │   │   │   │   ├── create-request.dto.ts
+│   │   │   │   ├── reassign-request-department.dto.ts
 │   │   │   │   └── update-status.dto.ts
 │   │   │   ├── entities/
 │   │   │   │   └── request.entity.ts

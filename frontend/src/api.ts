@@ -119,7 +119,7 @@ export async function getAssignableStaff(requestId: string): Promise<AssignableS
   return body as AssignableStaff[];
 }
 
-async function patchRequest(id: string, action: 'assign' | 'status', payload: object): Promise<RequestRecord> {
+async function patchRequest(id: string, action: 'assign' | 'status' | 'department', payload: object): Promise<RequestRecord> {
   let response: Response;
   try {
     const token = await getAuthToken();
@@ -143,6 +143,10 @@ export function takeOwnership(id: string, ownerId: string): Promise<RequestRecor
 
 export function assignRequestToStaff(id: string, ownerId: string): Promise<RequestRecord> {
   return patchRequest(id, 'assign', { ownerId });
+}
+
+export function reassignRequestDepartment(id: string, departmentId: string): Promise<RequestRecord> {
+  return patchRequest(id, 'department', { departmentId });
 }
 
 export function resolveRequest(id: string): Promise<RequestRecord> {

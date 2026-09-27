@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { assignRequestToStaff, AssignableStaff, createRequest, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
+import { assignRequestToStaff, AssignableStaff, createRequest, getAssignableStaff, getDepartmentQueue, getRequestForAssignment, getTriageSuggestion, listOwnRequests, reassignRequestDepartment, RequestRecord, resolveRequest, takeOwnership, TriageSuggestion } from './api';
 import { AuthProvider, useAuth } from './auth';
 import { AuthScreen } from './AuthScreen';
 
@@ -70,6 +70,7 @@ function RequestApp() {
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assignmentError, setAssignmentError] = useState('');
   const [assignmentSuccess, setAssignmentSuccess] = useState('');
+  const [targetDepartmentId, setTargetDepartmentId] = useState('');
 
   async function refreshOwnRequests(silent = false) {
     const refreshId = ++ownRequestsRefreshId.current;
@@ -120,6 +121,7 @@ function RequestApp() {
     setAssignmentRequest(null);
     setAssignableStaff([]);
     setSelectedAssigneeId('');
+    setTargetDepartmentId('');
     try {
       const loadedRequest = await getRequestForAssignment(requestedId);
       const staff = loadedRequest.status === 'Resolved' ? [] : await getAssignableStaff(loadedRequest.id);
@@ -140,6 +142,7 @@ function RequestApp() {
     setAssignmentRequest(null);
     setAssignableStaff([]);
     setSelectedAssigneeId('');
+    setTargetDepartmentId('');
     setAssignmentError('');
     setAssignmentSuccess('');
   }
@@ -164,6 +167,31 @@ function RequestApp() {
       setAssignmentSuccess(wasAssigned ? 'Request reassigned successfully.' : 'Request assigned successfully.');
     } catch (err) {
       setAssignmentError(err instanceof Error ? err.message : 'Unable to assign this request.');
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }
+
+  async function moveAdminRequestDepartment(event: React.FormEvent) {
+    event.preventDefault();
+    if (!assignmentRequest || !targetDepartmentId) return;
+    setAssignmentSaving(true);
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    try {
+      const updatedRequest = await reassignRequestDepartment(assignmentRequest.id, targetDepartmentId);
+      setAssignmentRequest(updatedRequest);
+      setTargetDepartmentId('');
+      setSelectedAssigneeId('');
+      setAssignmentSuccess(`Request moved to ${getDepartmentLabel(updatedRequest.departmentId)} and returned to the Open queue.`);
+      try {
+        setAssignableStaff(await getAssignableStaff(updatedRequest.id));
+      } catch {
+        setAssignableStaff([]);
+        setAssignmentError('The department changed, but the Staff list could not be refreshed. Find the request again before assigning it.');
+      }
+    } catch (err) {
+      setAssignmentError(err instanceof Error ? err.message : 'Unable to move this request to another department.');
     } finally {
       setAssignmentSaving(false);
     }
@@ -204,6 +232,7 @@ function RequestApp() {
     setAssignmentRequest(null);
     setAssignableStaff([]);
     setSelectedAssigneeId('');
+    setTargetDepartmentId('');
     setAssignmentError('');
     setAssignmentSuccess('');
     setAssignmentLoading(false);
@@ -359,8 +388,31 @@ function RequestApp() {
                     ? assignableStaff.find((candidate) => candidate.id === assignmentRequest.ownerId)?.displayName
                       || assignableStaff.find((candidate) => candidate.id === assignmentRequest.ownerId)?.email
                       || assignmentRequest.ownerId
-                    : 'Unassigned'}</span>
+                  : 'Unassigned'}</span>
                 </div>
+
+                {assignmentRequest.status !== 'Resolved' && (
+                  <form className="admin-department-form" onSubmit={moveAdminRequestDepartment}>
+                    <div className="field-group">
+                      <label className="field-label" htmlFor="request-target-department">Move to another department</label>
+                      <select
+                        id="request-target-department"
+                        value={targetDepartmentId}
+                        onChange={(event) => setTargetDepartmentId(event.target.value)}
+                        required
+                        disabled={assignmentSaving}
+                      >
+                        <option value="" disabled>Select destination department</option>
+                        {DEPARTMENTS.filter((department) => department.id !== assignmentRequest.departmentId).map((department) => (
+                          <option key={department.id} value={department.id}>{department.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button className="btn btn-secondary" type="submit" disabled={assignmentSaving || !targetDepartmentId}>
+                      {assignmentSaving ? 'Moving request…' : 'Move department'}
+                    </button>
+                  </form>
+                )}
 
                 {assignmentRequest.status === 'Resolved' ? (
                   <p className="request-history-empty">Resolved requests cannot be assigned.</p>

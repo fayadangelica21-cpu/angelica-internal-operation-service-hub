@@ -5,6 +5,7 @@ import { CurrentUserData } from './current-user';
 import { AssignRequestDto } from './dto/assign-request.dto';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { ReassignRequestDepartmentDto } from './dto/reassign-request-department.dto';
 import { RequestEntity } from './entities/request.entity';
 import { RequestStatus } from './enums/request-status.enum';
 import { RequestStateMachineService } from './request-state-machine.service';
@@ -116,6 +117,34 @@ export class RequestsService {
     );
     if (result.affected !== 1) {
       throw new ConflictException('This request was already taken or changed. Refresh the department queue.');
+    }
+    return this.requestsRepository.findOneByOrFail({ id });
+  }
+
+  async reassignDepartment(user: CurrentUserData, id: string, dto: ReassignRequestDepartmentDto): Promise<RequestEntity> {
+    if (user.role !== 'Admin') {
+      throw new ForbiddenException('Only Admins can reassign a request to another department.');
+    }
+    const request = await this.requestsRepository.findOneBy({ id });
+    if (!request) throw new NotFoundException(`Request with ID ${id} not found.`);
+    if (request.status === RequestStatus.RESOLVED) {
+      throw new BadRequestException('Resolved requests cannot be moved to another department.');
+    }
+    if (request.departmentId === dto.departmentId) {
+      throw new BadRequestException('Choose a different department for reassignment.');
+    }
+
+    const result = await this.requestsRepository.update(
+      {
+        id,
+        departmentId: request.departmentId,
+        status: request.status,
+        ownerId: request.ownerId ?? IsNull(),
+      },
+      { departmentId: dto.departmentId, ownerId: null, status: RequestStatus.OPEN },
+    );
+    if (result.affected !== 1) {
+      throw new ConflictException('This request changed while it was being moved. Reload it and try again.');
     }
     return this.requestsRepository.findOneByOrFail({ id });
   }

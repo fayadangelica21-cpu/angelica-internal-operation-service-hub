@@ -311,7 +311,7 @@ test('Staff see a clear message if another staff member already took the request
   await expect(page.getByRole('button', { name: 'Resolve request' })).toBeVisible();
 });
 
-test('Admin can assign and reassign a request to Staff in its department', async ({ page }) => {
+test('Admin can assign, reassign, and move a request to another department', async ({ page }) => {
   const targetRequest = {
     id: 'REQ-ADMIN-FR6-001',
     requesterId: 'employee-private-id',
@@ -325,11 +325,20 @@ test('Admin can assign and reassign a request to Staff in its department', async
     { id: 'staff-hr-two', displayName: 'HR Two', email: 'hr.two@example.test' },
   ];
   await page.route('**/requests/REQ-ADMIN-FR6-001', async (route) => route.fulfill({ json: targetRequest }));
-  await page.route('**/requests/REQ-ADMIN-FR6-001/assignees', async (route) => route.fulfill({ json: staffMembers }));
+  await page.route('**/requests/REQ-ADMIN-FR6-001/assignees', async (route) => route.fulfill({ json: targetRequest.departmentId === 'DEPT-HR' ? staffMembers : [
+    { id: 'staff-it-one', displayName: 'IT One', email: 'it.one@example.test' },
+  ] }));
   await page.route('**/requests/REQ-ADMIN-FR6-001/assign', async (route) => {
     const { ownerId } = route.request().postDataJSON() as { ownerId: string };
     targetRequest.ownerId = ownerId;
     targetRequest.status = 'In Progress';
+    await route.fulfill({ json: targetRequest });
+  });
+  await page.route('**/requests/REQ-ADMIN-FR6-001/department', async (route) => {
+    const { departmentId } = route.request().postDataJSON() as { departmentId: string };
+    targetRequest.departmentId = departmentId;
+    targetRequest.ownerId = null;
+    targetRequest.status = 'Open';
     await route.fulfill({ json: targetRequest });
   });
 
@@ -363,6 +372,17 @@ test('Admin can assign and reassign a request to Staff in its department', async
   await expect(selectedRequest).toHaveCount(0);
   await expect(page.getByRole('status')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Find request' })).toBeDisabled();
+
+  await page.getByLabel('Request ID').fill('REQ-ADMIN-FR6-001');
+  await page.getByRole('button', { name: 'Find request' }).click();
+  await expect(selectedRequest).toBeVisible();
+  await page.getByLabel('Move to another department').selectOption('DEPT-IT');
+  await page.getByRole('button', { name: 'Move department' }).click();
+  await expect(page.getByRole('status')).toHaveText('Request moved to IT and returned to the Open queue.');
+  await expect(selectedRequest).toContainText('DepartmentIT');
+  await expect(selectedRequest).toContainText('Current ownerUnassigned');
+  await expect(selectedRequest).toContainText('Open');
+  await expect(page.getByLabel('Assign to Staff')).toContainText('IT One');
 });
 
 test('a delayed profile response from an older account cannot replace the current login', async ({ page }) => {

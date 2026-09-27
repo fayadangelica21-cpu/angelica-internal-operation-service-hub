@@ -192,6 +192,7 @@ The model must preserve the current status on `Request` and each change in `Requ
 5. A status transition is recorded in status history.
 6. A status change must be persisted before notification is treated as successful; notification is a side effect, not the source of truth.
 7. A triage suggestion is a separate ephemeral recommendation and is not treated as a durable request lifecycle event.
+8. When an Admin moves an active request to another department, its Staff owner is cleared and its status returns to **Open** in the destination department's queue. Resolved requests cannot be moved.
 
 Traceability: FR5, FR10–FR11, acceptance criteria §9; architecture §4.1; AI triage contract.
 
@@ -350,9 +351,9 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 | Status | Requirement(s) | Rationale |
 |---|---|---|
-| Implemented | FR1, FR2, FR3, FR4, FR5, FR6 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to a Staff profile in the request's own department; backend HTTP, SQLite integration, and Playwright tests cover authorization and the assignment flow. |
+| Implemented | FR1, FR2, FR3, FR4, FR5, FR6, FR7 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to a Staff profile in the request's own department. FR7 lets Admins move an active request to a different supported department; the backend clears its owner, returns it to `Open`, validates authorization and department values, and rejects resolved requests. Backend HTTP, SQLite integration, and Playwright tests cover these flows. |
 | Partial | FR12 | Admin cross-department request monitoring is not implemented end-to-end. The Admin FR6 workflow looks up a single request by ID and does not provide a cross-department request list. |
-| Not implemented | FR7, FR8, FR9, FR10, FR11, FR13, FR14 | These requirements are either not yet built, not fully validated end-to-end, or explicitly out of the current implemented slice. |
+| Not implemented | FR8, FR9, FR10, FR11, FR13, FR14 | These requirements are either not yet built, not fully validated end-to-end, or explicitly out of the current implemented slice. |
 
 ### 9.2 Requirement-to-model mapping
 
