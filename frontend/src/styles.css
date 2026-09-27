@@ -122,11 +122,6 @@ textarea {
   box-shadow: 0 0 0 4px var(--primary-100);
 }
 
-.field-hint {
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
 .auth-submit {
   width: 100%;
 }
@@ -480,7 +475,7 @@ button {
 
 .admin-request-card {
   position: relative;
-  padding: 18px;
+  padding: 14px 18px 18px;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.78);
@@ -557,7 +552,7 @@ button {
 }
 
 .admin-request-description {
-  margin: 12px 0;
+  margin: 0 0 4px;
   color: var(--ink);
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -565,8 +560,9 @@ button {
 
 .admin-request-meta {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
   color: var(--muted);
   font-size: 0.84rem;
 }
@@ -936,22 +932,80 @@ textarea {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.request-form textarea::placeholder {
+  font-size: 0.9rem;
+}
+
+.request-form input[type='date'],
+.request-form input[type='time'] {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.92);
+  font: inherit;
+}
+
+.request-form input[type='date']:focus,
+.request-form input[type='time']:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+
+.expected-date-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  position: relative;
+}
+
+.expected-date-tooltip {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  left: 0;
+  max-width: min(300px, calc(100vw - 56px));
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: #14243a;
+  box-shadow: 0 8px 20px rgba(15, 37, 64, 0.2);
+  color: white;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+  pointer-events: none;
+}
+
+.expected-date-control:hover .expected-date-tooltip,
+.expected-date-control:focus-within .expected-date-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.queue-request-expected-date {
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 textarea:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 4px var(--primary-100);
 }
 
-.helper-row {
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(47, 111, 237, 0.04);
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
 .actions {
   display: flex;
+  justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -1626,13 +1680,29 @@ textarea:focus {
     flex: 1;
     flex-direction: column;
     margin-top: 0px;
-    gap: 16px;
+    gap: 9px;
+  }
+
+  .layout-one-panel .request-form .field-group,
+  .layout-two-panel .request-form .field-group {
+    gap: 7px;
+  }
+
+  .layout-one-panel .request-form .field-label,
+  .layout-two-panel .request-form .field-label {
+    font-size: 0.88rem;
+  }
+
+  .layout-one-panel .request-form .actions .btn,
+  .layout-two-panel .request-form .actions .btn {
+    padding: 10px 13px;
+    font-size: 0.86rem;
   }
 
   .layout-one-panel .request-form > .field-group:nth-child(2),
   .layout-two-panel .request-form > .field-group:nth-child(2) {
     flex: 1;
-    grid-template-rows: auto minmax(112px, 1fr);
+    grid-template-rows: auto minmax(84px, 1fr);
   }
 
   .layout-one-panel textarea,
