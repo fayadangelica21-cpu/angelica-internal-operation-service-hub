@@ -24,6 +24,7 @@ Open → In Progress → Resolved
 - Firebase-authenticated Staff can view active requests in their assigned department; the backend derives the department from the verified identity
 - Admins can assign or reassign a request to a Staff account in that request's department
 - Admins can move an active request to another department; the request returns to the Open queue without its previous Staff owner
+- Admins can monitor requests across IT, HR, and Finance, including current status and owner
 - Employees can view their own submitted requests and current statuses; the backend scopes the list to the verified Firebase UID
 - Backend-controlled AI triage step via `POST /triage` with a strict fixed JSON response contract
 - AI payload is bounded to only the information needed for triage; the backend validates the response before showing it
@@ -266,6 +267,15 @@ GET /requests/:id
 Both actions require Staff authorization for the request's department. Invalid lifecycle transitions are rejected, and a competing claim cannot replace an existing owner; refresh the queue if another Staff member takes the request first.
 After a successful claim, the request moves to the top of the department queue.
 
+### Monitor requests across departments (Admin)
+
+```http
+GET /requests/admin
+Authorization: Bearer <ADMIN_FIREBASE_ID_TOKEN>
+```
+
+This Admin-only endpoint returns requests across all departments, including resolved requests, ordered by most recently updated. The Admin workspace shows each request's department, status, owner, and timestamps; a department filter narrows the list while **All departments** shows the full view. The list has a manual refresh button and refreshes automatically while the page is visible. Employees and Staff receive `403 Forbidden`.
+
 ### Assign a request (Admin)
 
 Admins can look up an individual request by ID, then assign or reassign it to a Staff member in that request's department. The staff options come from local SQLite profiles created when Staff sign in. The backend enforces the role and same-department rules, regardless of the submitted owner ID.
@@ -373,7 +383,7 @@ npm run test:all
 | Command | What it proves |
 |---|---|
 | `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
-| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering, Staff claim/resolve actions, and Admin assignment and department-reassignment rules. |
+| `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including Employee-owned request-list filtering, Staff claim/resolve actions, and Admin cross-department monitoring, assignment, and department-reassignment rules. |
 | `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
 | `npm run test:all` | All backend tests |
 
@@ -386,7 +396,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin assignment, reassignment, and moving an active request to another department. The Admin assignment test also verifies that **New lookup** clears the current request ID, selected request, and success message so the Admin can start another lookup without signing out. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, role-based page visibility, request submission and the Employee-owned request list with refreshed statuses, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin monitoring requests across departments with department filtering, assigning/reassigning Staff, and moving an active request to another department. Admin coverage includes manual list refresh, opening a request with **Manage assignment**, and returning to the filtered list with **Back to requests**. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
