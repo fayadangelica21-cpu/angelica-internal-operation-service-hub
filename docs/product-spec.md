@@ -14,18 +14,17 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 ## 3. Functional Requirements
 1. Employees can submit a new request by selecting a department and describing the issue.
 2. Employees can request an AI-assisted triage step before final submission. The AI suggests a likely department and next step based only on the issue description and a minimal bounded context, and the backend validates each response before showing it to the employee.
-3. Employees can view the status of their own requests (e.g., Open, In Progress, Resolved).
+3. Employees can view the current status of their own requests (e.g., Open, In Progress, Resolved). When a status changes, a red dot appears on **My requests** until the employee opens that view.
 4. Department staff can view active requests assigned to their department. Overdue active requests from the previous seven days are available in a separate view; older overdue requests are omitted from the Staff views.
 5. Department staff can update the status of a request.
 6. Department staff can take ownership of requests, and admins can assign or reassign requests to appropriate staff members.
 7. Admins can reassign a request to a different department when it has been submitted to the wrong department.
 8. Employees must provide at least an expected resolution date or time when submitting a request, and may provide both. A date without a time means by 11:59 PM on that date; a time without a date applies to the submission date.
 9. Employees can see when one of their active requests is overdue, and Admins can identify overdue requests across departments. Employee and Admin request lists mark overdue requests in red. Staff see a separate department view for active requests overdue within the previous seven days; older overdue requests are omitted from Staff views. The active Staff queue shows a **Due soon** mark for requests due within three hours. The Admin request list also shows an alert when one or more active requests are due within the next three hours. The Admin UI disables **Manage assignment** for overdue requests.
-10. Employees are notified when the status of their request changes.
-11. Employees can view their complete request history.
-12. Admins can view and monitor all requests across all departments.
-13. Each department's requests must remain private and visible only to the relevant employee, authorized department staff, and authorized admins.
-14. Admins can view workload across departments and staff members.
+10. Employees can view their complete request history.
+11. Admins can view and monitor all requests across all departments.
+12. Each department's requests must remain private and visible only to the relevant employee, authorized department staff, and authorized admins.
+13. Admins can view workload across departments and staff members.
 
 ## 4. Non-Functional Requirements
 - The system must be accessible from both desktop and mobile browsers.
@@ -55,7 +54,7 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 
 **Prototype implementation note:** the current demo uses Firebase email/password authentication, permits Employee self-sign-up, and assigns Staff/Admin roles from a server-side Firebase UID map. Signup does not verify that a person is a company employee, so it demonstrates authentication and role gating but does not yet satisfy the internal-employee identity assumption for production use.
 
-**Implementation status:** FR10 status-change notifications are not implemented. Employees can see status changes when their request history refreshes. Staff overdue requests are available through a separate department view for deadlines within the previous seven days; older overdue requests are omitted from Staff views.
+Staff overdue requests are available through a separate department view for deadlines within the previous seven days; older overdue requests are omitted from Staff views.
 
 ## 8. Non-Goals (What We're Deliberately Not Solving)
 - Not building a full ticketing system with SLAs, escalation rules, or automated routing.
@@ -67,7 +66,7 @@ This leads to lost or delayed requests, unclear ownership, inconsistent follow-u
 
 ## 9. Acceptance Criteria (Examples of Correct Behavior)
 - An employee submits an IT request → it appears as "Open" in their history and in IT's queue.
-- IT staff changes the status to "In Progress" → the employee sees the updated status and gets notified.
+- IT staff changes the status to "In Progress" → a red dot appears on the employee's **My requests** tab; opening the tab shows the updated status and history and clears the dot.
 - IT staff marks it "Resolved" → it moves out of the active queue and into the employee's resolved history.
 - An HR request never appears in the IT staff's queue, and vice versa.
 - An admin can see all three departments' requests in one combined view.

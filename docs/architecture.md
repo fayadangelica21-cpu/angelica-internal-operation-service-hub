@@ -2,11 +2,11 @@
 
 **Firebase project implementation:** the prototype uses Firebase Authentication email/password for sign-up and sign-in. The frontend sends Firebase ID tokens to the API; the backend verifies them with Firebase Admin. The backend assigns roles and staff departments from the server-side Firebase UID mapping and upserts the verified profile in local SQLite. No password is stored in SQLite. This is the prototype identity implementation; company SSO/directory integration remains out of scope.
 
-Architecture reasoning only — this document is a design draft, not an implementation.
+This document records the product architecture and trust boundaries, with prototype implementation notes where relevant.
 Input: `product-spec.md`. Every decision below traces back to a Functional Requirement (FR),
 Non-Functional Requirement (NFR), or Specification/Constraint (SPEC) ID from that document.
 
-**Current implementation note:** the running prototype uses Firebase email/password authentication and SQLite. Status-change notifications (FR10) are not implemented; employees see changes after their request list refreshes. Staff have a separate overdue queue for requests whose deadlines fell within the previous seven days.
+**Current implementation note:** the running prototype uses Firebase email/password authentication and SQLite. Employee request lists refresh every five seconds while the app is visible. When a request's status changes, a red dot appears on **My requests** until the employee opens the history view. The unread indicator and last-seen status snapshot are stored in browser local storage per Firebase UID; they are not server-side or cross-device state. Staff have a separate overdue queue for requests whose deadlines fell within the previous seven days.
 
 ---
 
@@ -25,7 +25,7 @@ clear ownership, status visibility, and no silent drops.
 | Admin/Manager | Cross-department visibility, reassignment, overdue monitoring |
 
 ### System boundary
-**In scope:** request lifecycle (Open → In Progress → Resolved), status notifications,
+**In scope:** request lifecycle (Open → In Progress → Resolved),
 cross-department admin oversight, department-level data isolation, and backend-controlled AI triage
 suggestions before final request submission. The AI step is a bounded recommendation layer that
 returns a validated structured response and never mutates the final request record directly.
@@ -37,18 +37,17 @@ creation, and any AI action that bypasses backend validation (full exclusion lis
 |---|---|
 | FR1 | Employees submit a new request by selecting a department and describing the issue. |
 | FR2 | Employees can request AI-assisted triage before final submission; the backend validates the response before showing it. |
-| FR3 | Employees view the status of their own requests. |
+| FR3 | Employees view the status of their own requests; a status change marks **My requests** until they open that view. |
 | FR4 | Department staff view active requests assigned to their department; recently overdue requests have a separate view. |
 | FR5 | Department staff update the status of requests. |
 | FR6 | Staff take ownership; admins assign or reassign staff. |
 | FR7 | Admins reassign a request to the correct department when it was submitted to the wrong one. |
 | FR8 | Employees provide a local expected resolution date, time, or both; the backend stores the resulting UTC timestamp. |
 | FR9 | Backend derives overdue and due-soon status for active requests; Employees and Admins see overdue requests in red, Staff see overdue requests from the previous seven days in a separate view and due-soon marks in their active queue, and Admins cannot open Manage assignment for overdue requests and receive an alert for requests due within three hours. |
-| FR10 | Employees are notified when a request status changes. |
-| FR11 | Employees view their full request history. |
-| FR12 | Admins view and monitor all requests across departments. |
-| FR13 | Each department's requests remain private and visible only to the relevant employee, authorized department staff, and authorized admins. |
-| FR14 | Admins view workload across departments and staff members. |
+| FR10 | Employees view their full request history. |
+| FR11 | Admins view and monitor all requests across departments. |
+| FR12 | Each department's requests remain private and visible only to the relevant employee, authorized department staff, and authorized admins. |
+| FR13 | Admins view workload across departments and staff members. |
 
 ### Non-Functional Requirements
 | ID | Requirement |
@@ -78,31 +77,27 @@ creation, and any AI action that bypasses backend validation (full exclusion lis
 | Component | Responsibility | Traces to |
 |---|---|---|
 | Client (Web browser) | Renders UI for Employee/Staff/Admin roles; responsive layout | NFR1, NFR3 |
-| Frontend App (SPA) | Renders request forms, queues, dashboards; role-based views | FR3, FR4, FR11, FR12, FR14, NFR3 |
-| Backend API | Owns all business logic: create/assign/reassign/status-transition/overdue-detection; enforces access rules | FR1, FR5–FR9, FR12–FR14, SPEC2, SPEC4 |
-| AI Triage Service | Receives a bounded issue description, suggests a likely department and next step, validates the model output, and returns only a backend-approved result; it does not mutate the final request record | FR1, FR2, FR13 |
-| Identity Provider (SSO/Directory) *(external)* | Authenticates employee; supplies role + department claims | SPEC3, SPEC9 |
+| Frontend App (SPA) | Renders request forms, queues, dashboards; role-based views | FR3, FR4, FR10–FR13, NFR3 |
+| Backend API | Owns all business logic: create/assign/reassign/status-transition/overdue-detection; verifies Firebase ID tokens, resolves server-side role assignments, and enforces access rules | FR1, FR3–FR13, SPEC2, SPEC4, SPEC9 |
+| AI Triage Service | Receives a bounded issue description, suggests a likely department and next step, validates the model output, and returns only a backend-approved result; it does not mutate the final request record | FR2 |
+| Firebase Authentication | Authenticates with email/password and issues ID tokens; Admin SDK verifies tokens, while the backend maps Firebase UIDs to roles and Staff departments | SPEC9 |
 | Database | Persists requests, users, departments, status history | SPEC1, SPEC2, SPEC4, FR8 |
-| Notification Service | Sends status-change alerts to employees | FR10 |
 
 ### 2.2 External Dependencies
-- **Identity Provider / Company Directory** — spec assumes role/department are "known by the
-  system" (SPEC9); this system consumes identity, it does not implement authentication.
-- **Notification/email gateway** — outbound channel for FR10; part of the org's existing mail
-  system, not built here.
+- **Firebase Authentication** — provides email/password authentication and signed ID tokens. The backend verifies each token, assigns Employee by default, and resolves Staff/Admin roles and Staff departments from server-side `FIREBASE_ROLE_ASSIGNMENTS` keyed by Firebase UID. The Firebase UID is the local SQLite user key; passwords are not stored in the Service Hub database. Employee self-sign-up does not verify company employment, so this prototype does not enforce the product's internal-employee identity assumption (SPEC3).
 
 No CRM and no separate department databases — the spec keeps this to a single internal system,
 not integrated with existing HR/Finance software (Non-Goal: not replacing dedicated HR/Finance
 systems).
 
 ### 2.3 Data Flows
-1. **Submit request** (FR1) — Client → Frontend → Backend API → Database (write, status=Open) → Notification Service (confirmation)
+1. **Submit request** (FR1) — Client → Frontend → Backend API → Database (write, status=Open)
 2. **AI triage suggestion** (FR2) — Client → Frontend → Backend API → AI Triage Service (bounded prompt) → Backend validation → Frontend displays only the validated suggestion
-3. **Status update** (FR5, FR10) — Staff via Frontend → Backend API → Database (write) → Notification Service → Employee notified
+3. **Status update** (FR5) — Staff via Frontend → Backend API → Database (write)
 4. **Take ownership / reassign** (FR6, FR7) — Staff/Admin → Backend API → Database (write owner/department field)
 5. **Deadline monitoring** (FR9) — Employee history, Staff active/overdue queue, and Admin request-list reads → Backend API derives status from each authorized list's expected deadline and current status; Employee and Admin UIs show overdue in red, the Staff active queue shows a due-soon mark and the separate Staff overdue view includes only deadlines from the previous seven days, and the Admin UI disables Manage assignment for overdue requests and alerts for due-soon requests
-6. **Cross-department monitoring** (FR12) — Admin → Frontend → Backend API → Database (aggregate read across all departments, bypassing the FR13 isolation filter only for the Admin role)
-7. **Workload monitoring** (FR14) — Admin → Frontend → Backend API → Database (aggregate read, grouped by staff/department) → displayed in Admin dashboard
+6. **Cross-department monitoring** (FR11) — Admin → Frontend → Backend API → Database (aggregate read across all departments, bypassing the FR12 isolation filter only for the Admin role)
+7. **Workload monitoring** (FR13) — Admin → Frontend → Backend API → Database (aggregate read, grouped by staff/department) → displayed in Admin dashboard
 
 ### 2.4 Component diagram
 
@@ -112,7 +107,7 @@ Client (browser)
      ▼
 Frontend App (SPA) ── role-based views
      │
-     ├── Auth ──────► Identity Provider (external SSO)
+     ├── Auth ──────► Firebase Authentication (email/password, ID token)
      │
      ├── Triage call ─► Backend API ── bounded prompt ─► AI Triage Service
      │                                                    │
@@ -122,7 +117,6 @@ Frontend App (SPA) ── role-based views
                              │
                              ├── Write/read ─► Database ── requests, users, depts
                              │
-                             └── Trigger ────► Notification Service ── status alerts
 ```
 
 ### 2.5 Failure modes — inside each component
@@ -132,26 +126,24 @@ Frontend App (SPA) ── role-based views
 | Client | Browser tab closes/crashes mid-submit | Draft not persisted client-side — resubmission required (documented gap, not silent loss) | NFR1 |
 | Frontend app | JS bundle fails to load / stale cache | Fallback error screen, no partial UI state shown | NFR3 |
 | Backend API | Business-rule crash (e.g. invalid state transition) | Request rejected with clear error; DB write never partially committed | FR5, SPEC2 |
-| AI Triage Service | Provider outage or malformed model output | Provider call fails closed; backend returns a controlled rejection and never exposes untrusted AI text to the frontend | FR2, FR13 |
-| Identity provider | SSO outage | Login blocked; no request can be created/viewed until restored — explicitly not solved locally | SPEC9 |
+| AI Triage Service | Provider outage or malformed model output | Provider call fails closed; backend returns a controlled rejection and never exposes untrusted AI text to the frontend | FR2 |
+| Firebase Authentication | Sign-in or token verification unavailable | Sign-in or authenticated API calls fail; the backend rejects invalid or expired tokens | SPEC9 |
 | Database | Write conflict / connection drop | Transaction rolled back; request stays in prior valid status, never half-updated | SPEC2, SPEC4 |
-| Notification service | Delivery failure (mail gateway down) | Status change is already persisted and visible in-app; notification is best-effort, not a correctness dependency | FR10 |
 
 ### 2.6 Failure modes — between components
 
 | Connection | Failure between | How it's handled | Traces to |
 |---|---|---|---|
 | Client ↔ Frontend | Network drop mid-session | Frontend detects disconnect, blocks further actions until reconnect | NFR1 |
-| Frontend ↔ Identity provider | Auth timeout/token expiry | User redirected to re-auth; no action processed on a stale session | SPEC9 |
+| Frontend ↔ Firebase Authentication / Backend API | Auth timeout or token expiry | User must authenticate again; the backend rejects invalid or expired ID tokens | SPEC9 |
 | Frontend ↔ Backend API | API unreachable or slow | Frontend surfaces a retry state; no optimistic UI update assumed | NFR2 |
 | Backend API ↔ Database | DB unreachable | API returns failure to Frontend rather than assuming success; nothing queued silently | SPEC2 |
-| Backend API ↔ AI Triage Service | Provider unavailable or malformed response | API rejects the result and returns a controlled error; no unvalidated free-form output reaches the UI | FR2, FR13 |
-| Backend API ↔ Notification service | Notification call fails after DB commit | Status update already succeeded (source of truth); notification failure is logged/retried separately, never rolls back the status change | FR10 |
+| Backend API ↔ AI Triage Service | Provider unavailable or malformed response | API rejects the result and returns a controlled error; no unvalidated free-form output reaches the UI | FR2 |
 | Backend API ↔ Database | Two staff members take ownership of the same request at the same time. The ownership write only succeeds if the request is still unowned. The first write wins and the second is rejected with a clear message ("already taken by X"), and the Frontend refreshes the queue. No silent overwrite. | FR6, SPEC4 |
 
 ### 2.7 Requirement coverage (diagram → every FR)
 
-The diagram in 2.4 is the architecture for the entire product, not one feature. All 14 FRs route
+The diagram in 2.4 is the architecture for the entire product, not one feature. All 13 FRs route
 through the same 6 components — they differ only in which filter or field the Backend API
 applies, not in which components they touch:
 
@@ -161,38 +153,36 @@ applies, not in which components they touch:
 | FR2 (AI triage) | Client → Frontend → Backend API → AI Triage Service → Frontend (validated suggestion) |
 | FR3 (employee views own status) | Client → Frontend → Backend API → Database (read, filtered by requester) |
 | FR4 (staff views dept queue) | Client → Frontend → Backend API → Database (read, filtered by department) |
-| FR5 (staff updates status) | Client → Frontend → Backend API → Database (write) → Notification |
+| FR5 (staff updates status) | Client → Frontend → Backend API → Database (write) |
 | FR6 (ownership/assignment) | Client → Frontend → Backend API → Database (write owner field) |
 | FR7 (reassign wrong dept) | Client → Frontend → Backend API → Database (write dept field) |
 | FR8 (expected resolution date and time) | Client → Frontend → Backend API → Database (write) |
 | FR9 (overdue and due-soon indicators) | Employee/Staff/Admin client → Backend API (derive from current time/status) → Database (read); Employee/Admin display overdue, Staff display due-soon mark, Admin disables assignment management and displays due-soon warning |
-| FR10 (notify on status change) | Backend API → Notification Service |
-| FR11 (request history) | Client → Frontend → Backend API → Database (read, unfiltered by status) |
-| FR12 (admin cross-dept view) | Client → Frontend → Backend API → Database (read, unfiltered by department) |
-| FR13 (privacy/isolation) | Cross-cutting: enforced on every read path by the Backend API's role/department filter (see §3.1) |
-| FR14 (workload monitoring) | Client → Frontend → Backend API → Database (aggregate read, grouped by dept/staff) |
+| FR10 (request history) | Client → Frontend → Backend API → Database (read, unfiltered by status) |
+| FR11 (admin cross-dept view) | Client → Frontend → Backend API → Database (read, unfiltered by department) |
+| FR12 (privacy/isolation) | Cross-cutting: enforced on every read path by the Backend API's role/department filter (see §3.1) |
+| FR13 (workload monitoring) | Client → Frontend → Backend API → Database (aggregate read, grouped by dept/staff) |
 
-This is a deliberate architectural property, not a coincidence: **one API, one database, one
-notification path serve every feature through role/filter differences rather than separate
-subsystems.** That's why the diagram stays at 6 boxes instead of growing per feature.
+This is a deliberate architectural property: one API and one database serve every feature through
+role/filter differences rather than separate subsystems.
 
 ---
 
 ## 3. Trust + Resilience
 
 ### 3.1 Trust / Authorization boundaries
-Traces to FR13 ("each department's requests must remain private") and the edge case
+Traces to FR12 ("each department's requests must remain private") and the edge case
 "Employee tries to access another employee's request." Every boundary is enforced
 **server-side, in the Backend API** — never trusted to the Frontend.
 
 | Boundary | Rule | Traces to |
 |---|---|---|
-| Employee → own requests only | API filters all reads/writes by `requester_id = current_user` | FR13, §10 edge case |
-| Staff → own department only | API filters by `department = staff.department` (claim from SPEC9) | FR4, FR13, SPEC6 |
+| Employee → own requests only | API filters all reads/writes by `requester_id = current_user` | FR12, §10 edge case |
+| Staff → own department only | API filters by `department = staff.department` (server-side Firebase UID assignment) | FR4, FR12, SPEC6, SPEC9 |
 | Staff → ownership actions | Can take ownership/update status only within their own department | FR5, FR6 |
 | Admin → all departments | Only role allowed to bypass the department filter, for reads and reassignment | FR7, FR12 |
 | Cross-department leakage | An HR request must never appear in IT's queue, and vice versa | §9 acceptance criteria |
-| Workload | Admin → workload data across all departments; only the Admin role may view aggregate staff/department workload | FR14 |
+| Workload | Admin → workload data across all departments; only the Admin role may view aggregate staff/department workload | FR13 |
 
 Role + department is the actual authorization key on every Backend API call — there is no
 endpoint that returns unfiltered data; "admin" is a distinct authorization mode, not an
@@ -205,7 +195,7 @@ unfiltered default.
 - **NFR2 ("within a few seconds")**: achievable via direct synchronous API calls, no queue
   required — see Decision in Section 4.1.
 - **Availability**: no stated uptime SLA (correctly excluded — Non-Goal: no SLAs). System
-  availability depends on Database and Identity Provider; redundancy for either is out of scope.
+  availability depends on the Database and Firebase Authentication; redundancy for either is out of scope.
 - **Growth**: Unknowns §6 flags future departments as open. `department` should be a lookup
   table, not a hardcoded enum — adding a 4th department becomes a data change, not a code change.
 
@@ -218,26 +208,22 @@ unfiltered default.
 |---|---|---|---|
 | Client → Frontend → Backend API | Synchronous | User needs immediate confirmation before moving on | NFR2, FR1, FR5 |
 | Backend API → Database | Synchronous | Correctness depends on the caller knowing immediately whether the write committed | SPEC2, SPEC4 |
-| Backend API → Notification service | Asynchronous | Must never block or reverse a status update (fire-and-forget, retried/logged on failure) | FR10 |
 | Deadline indicators | Synchronous on Admin list refresh | Derived from current time and request status; the existing five-second refresh keeps the Admin view current | FR9 |
 | Frontend → Backend API → AI Triage Service | Synchronous | The employee needs the suggestion immediately before submission, but the backend still owns validation and trust | FR2 |
 
-**Rule of thumb**: anything the user is waiting on to confirm their action succeeded is
-synchronous; anything that's a side-effect of an already-committed fact is asynchronous. This is
-why Notification sits outside the write path — a slow or failed mail gateway can never make a
-successful update look like it failed.
+**Rule of thumb**: user actions use synchronous API and database calls so the user receives
+immediate confirmation that the action succeeded.
 
 ### 4.2 Major decisions + rationale
 | Decision | Rationale | Traces to |
 |---|---|---|
-| Single relational database, no per-department databases | SPEC2 (one dept per request) + FR12 (unified admin view); splitting would force fan-out queries at only 3 departments' scale | SPEC1, SPEC2, FR12 |
-| Authorization enforced only in Backend API | FR13 and the unauthorized-access edge case are security requirements, not UX — Frontend-only filtering would leak data via direct API calls | FR13, §10 |
-| AI triage is a bounded suggestion step, not a write path | FR2 explicitly keeps the AI as a pre-submission recommendation and requires backend validation before the frontend can show it | FR2, FR13 |
+| Single relational database, no per-department databases | SPEC2 (one dept per request) + FR11 (unified admin view); splitting would force fan-out queries at only 3 departments' scale | SPEC1, SPEC2, FR11 |
+| Authorization enforced only in Backend API | FR12 and the unauthorized-access edge case are security requirements, not UX — Frontend-only filtering would leak data via direct API calls | FR12, §10 |
+| AI triage is a bounded suggestion step, not a write path | FR2 explicitly keeps the AI as a pre-submission recommendation and requires backend validation before the frontend can show it | FR2 |
 | No message queue / event bus | NFR2 only demands "a few seconds", and expected volume is low (single company, 3 departments); a queue adds complexity with no requirement that needs it | NFR2, SPEC1, SPEC5 |
-| Identity/role/department consumed externally, not built | SPEC9 says users are already authenticated and role/department are known to the system, so building identity would duplicate what the company already has | SPEC3, SPEC9 |
+| Firebase Authentication for the prototype | The prototype needs sign-in and verified identity tokens; server-side UID mappings provide role and Staff department. Company SSO remains a possible future integration, not a current dependency. | SPEC9 |
 | `department` as data, not a hardcoded enum | Unknowns §6 flags future growth; configurable data avoids a later migration | SPEC1, Unknowns §6 |
-| Notification decoupled (async) from the status-write transaction | Resolves the Section 2.6 failure mode: notification failure must never cause a false failure or rollback | FR10 |
-| Admin reassignment as a first-class write path | Both wrong-department reassignment and staff-overload rebalancing (§10) need the same underlying operation | FR6, FR7, §10, FR14 |
+| Admin reassignment as a first-class write path | Both wrong-department reassignment and staff-overload rebalancing (§10) need the same underlying operation | FR6, FR7, §10, FR13 |
 
 ---
 
@@ -250,7 +236,7 @@ successful update look like it failed.
 - No autonomous request creation from AI without human review
 - No unnecessary microservices — single Backend API + single Database (Section 4 decision)
 - No message queue/event pipeline — Section 4.1 communication is direct sync/async calls only
-- No email/SSO implementation — Identity Provider and Notification gateway are external dependencies (Section 2.2)
+- No company SSO/directory integration — Firebase email/password authentication is the current prototype identity provider (Section 2.2)
 
 **"Done" means:**
 1. Major parts identified, and why each exists → Section 2.1

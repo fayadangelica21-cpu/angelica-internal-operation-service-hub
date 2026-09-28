@@ -126,12 +126,13 @@ export class TriageProviderService {
 
   private getFallbackSuggestion(input: TriageAiRequest): TriageAiResponseDto {
     const lower = input.description.toLowerCase();
-    const hasLaptop = /laptop|screen|keyboard|monitor|battery|device|hardware/.test(lower);
-    const hasAccess = /login|password|access|vpn|email|locked|permission|account/.test(lower);
-    const hasPayroll = /payroll|salary|tax|payslip|bonus|paycheck|payment/.test(lower);
-    const hasHr = /leave|holiday|benefit|policy|employment|contract|time off|hr/.test(lower);
-    const hasFinance = /invoice|expense|reimbursement|budget|finance|payment|receipt/.test(lower);
-    const hasAnyDepartmentMatch = hasLaptop || hasAccess || hasPayroll || hasHr || hasFinance;
+    const hasLaptop = /laptop|screen|keyboard|monitor|battery|device|hardware|desktop|computer|\bpc\b|charger|mouse|printer|scanner|webcam|dock|\busb\b|broken|repair/.test(lower);
+    const hasSoftware = /software|application|\bapp\b|install|update|crash|bug|\bteams\b|license/.test(lower);
+    const hasAccess = /login|password|access|vpn|email|locked|permission|account|\bmfa\b|\b2fa\b|verification code|reset password|username|sign in|locked out|shared drive|wi-?fi|internet|connection|outage|network|slow/.test(lower);
+    const hasPayroll = /payroll|salary|tax|payslip|pay\s*stub|bonus|paycheck|payment|direct deposit|deduction|withholding|overtime|bank details/.test(lower);
+    const hasHr = /leave|holiday|benefit|policy|employment|contract|time off|\bhr\b|onboarding|new hire|offboarding|resignation|recruitment|interview|performance review|sick leave|maternity leave|insurance|workplace accommodation|employee handbook/.test(lower);
+    const hasFinance = /invoice|expense|reimburse(?:ment)?|budget|finance|payment|receipt|per diem|purchase order|vendor|supplier|invoice approval|corporate card|travel expense|budget approval|cost center|accounting/.test(lower);
+    const hasAnyDepartmentMatch = hasLaptop || hasSoftware || hasAccess || hasPayroll || hasHr || hasFinance;
     const isOffTopic =
       !hasAnyDepartmentMatch &&
       /weather|forecast|recipe|restaurant|movie|football|soccer|basketball|birthday|vacation|holiday|celebrity|horoscope|sports score|game score|lunch menu/.test(lower);
@@ -142,6 +143,9 @@ export class TriageProviderService {
     if (hasLaptop) {
       departmentId = 'DEPT-IT';
       issueType = 'hardware';
+    } else if (hasSoftware) {
+      departmentId = 'DEPT-IT';
+      issueType = 'software';
     } else if (hasAccess) {
       departmentId = 'DEPT-IT';
       issueType = 'access';

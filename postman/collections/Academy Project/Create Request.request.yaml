@@ -1,15 +1,15 @@
 $kind: http-request
 method: POST
-url: http://localhost:3000/requests/
+url: http://localhost:3001/requests/
 order: 1000
 headers:
   Content-Type: application/json
-  x-user-id: EMP-001
-  x-user-role: Employee
+  Authorization: Bearer {{employeeIdToken}}
 body:
   type: json
   content: |-
     {
       "departmentId": "DEPT-IT",
-      "description": "Laptop screen flickers"
+      "description": "Laptop screen flickers",
+      "expectedResolutionDate": "2026-10-15T17:30:00.000Z"
     }

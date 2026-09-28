@@ -7,7 +7,13 @@ Week 3 — React + NestJS + SQLite product slice
 Week 4 — Backend-controlled AI triage suggestion contract
 ```
 
-Employees submit one internal service request (IT, HR, or Finance). The backend owns validation, authorization, persistence, and lifecycle rules. A new backend-controlled AI triage step can suggest a likely department and next step before the final request is submitted.
+```text
+Current version
+React + NestJS + SQLite service request hub
+Firebase Authentication, role-based access, and AI-assisted triage
+```
+
+Employees submit and track internal service requests for IT, HR, or Finance. The backend owns validation, authorization, persistence, and lifecycle rules. AI-assisted triage suggests a likely department and next step before the employee submits a request.
 
 ```text
 Open → In Progress → Resolved
@@ -15,9 +21,10 @@ Open → In Progress → Resolved
 
 ---
 
-## What this slice includes
+## Current capabilities
 
 - React form for submitting a request and AI-assisted triage workflow
+- Responsive mobile layouts for Employee, Staff, and Admin workspaces, with touch-friendly controls and vertically stacked form inputs
 - AI assistant UI for department suggestions, confidence scoring, and suggested next steps
 - NestJS API with an explicit contract
 - SQLite persistence through TypeORM
@@ -28,17 +35,17 @@ Open → In Progress → Resolved
 - Admins can monitor requests across IT, HR, and Finance, including current status and owner
 - Admins can review active workload totals by department and assigned Staff member in a dedicated workload view; resolved requests are excluded
 - Employees can view their own requests with a chronological status timeline and change timestamps; the backend scopes the list to the verified Firebase UID and omits internal actor IDs
+- A red dot appears on **My requests** when one of the Employee's request statuses changes; opening the tab shows the refreshed request history and clears the indicator
 - Backend-controlled AI triage step via `POST /triage` with a strict fixed JSON response contract
 - AI payload is bounded to only the information needed for triage; the backend validates the response before showing it
 - Authorization: an employee can create a request as themselves; another employee cannot read it (`403`)
 - Department queue authorization tests ensure Staff cannot see other departments' requests and resolved requests are excluded
 - Invalid input rejected on purpose (`400`)
 - Missing request handled on purpose (`404`)
-- Status changes are visible through refreshed request lists; status-change notifications are not implemented yet
 - Automated business-rule, integration, and E2E tests
 - Regression protection for the forbidden `Open → Resolved` jump
 
-Out of scope for Week 4: company SSO, notifications, CI/CD, deployment, and production infrastructure. Firebase Authentication provides email/password sign-in for this project. The backend verifies Firebase ID tokens and makes every authorization decision.
+Out of scope: company SSO, CI/CD, and production infrastructure. Firebase Authentication provides email/password sign-in for this project. The backend verifies Firebase ID tokens and makes every authorization decision.
 
 ---
 
@@ -68,7 +75,7 @@ Set `FIREBASE_PROJECT_ID` to the Firebase project ID. Configure Google Applicati
 
 After Firebase verifies a user's ID token, `GET /auth/me` creates or updates that account's profile in the local SQLite `users` table, keyed by Firebase UID. The profile stores email, display name, role, and department where applicable; passwords remain in Firebase and are never stored in SQLite. Public signup is for demo Employee accounts and does not verify company employment.
 
-If `AI_BASE_URL` and `AI_API_KEY` are not set, the backend still starts successfully and uses a deterministic local fallback suggestion instead of failing the process. If both are present, the app logs that the live provider is enabled and the AI path is active.
+If `AI_BASE_URL` and `AI_API_KEY` are not set, the backend still starts successfully and uses a deterministic local keyword fallback. It recognizes common IT device, software, sign-in, and network issues; HR topics such as onboarding, leave, and benefits; and Finance topics such as payroll, expenses, invoices, and purchasing. If both settings are present, the app uses the live AI provider.
 
 Example backend `.env`:
 
@@ -80,7 +87,7 @@ AI_API_KEY=your-local-requesty-key
 AI_MODEL=google/gemma-4-31b-it
 ```
 
-`AI_MODEL` is just an example model name for local configuration; the app does not require this exact value to start, and missing AI config falls back to a deterministic local suggestion.
+`AI_MODEL` is just an example model name for local configuration; the app does not require this exact value to start, and missing AI configuration uses the deterministic local keyword fallback described below.
 
 The backend appends `/chat/completions` automatically, so `AI_BASE_URL` must be the base URL only, not the full chat-completions URL.
 
@@ -104,6 +111,8 @@ The Firebase web-app settings have defaults in `frontend/src/auth.tsx`, so no fr
 
 Employees can create accounts from the app. Create Staff/Admin accounts in Firebase, copy each account's UID, then add its UID, role, and (for Staff) department to backend `FIREBASE_ROLE_ASSIGNMENTS`. Staff accounts are added to the local SQLite user table when they sign in; Admins can assign requests to those registered Staff accounts in the same department.
 
+For the Postman examples, set the `employeeIdToken` global to a current Firebase ID token for an Employee account. Obtain a fresh token after signing in; do not save evaluation passwords or long-lived tokens in the collection.
+
 ### Stop the project
 
 The backend and frontend run in separate terminals.
@@ -113,6 +122,91 @@ Press Ctrl + C in each terminal to stop the corresponding process.
 The SQLite database remains on disk at:
 
 backend/data/service-hub.sqlite
+
+---
+
+## Grader access
+
+Deployment is planned; the live URL will be added after deployment. The backend verifies Firebase ID tokens and enforces roles and department access on every request; the browser cannot assign its own role or department.
+
+| Email | Evaluation password | Role | Department |
+|---|---|---|---|
+| admin@gmail.com | See submission email | Admin | — |
+| it@gmail.com | See submission email | Staff | `DEPT-IT` |
+| hr@gmail.com | See submission email | Staff | `DEPT-HR` |
+| finance@gmail.com | See submission email | Staff | `DEPT-FINANCE` |
+| nadoh@gmail.com | `p@ssw0rd` | Employee | — |
+| angelicaf@gmail.com | `p@ssw0rd` | Employee | — |
+
+Employees can also sign up from the app. Staff and Admin roles are assigned by Firebase UID in backend `FIREBASE_ROLE_ASSIGNMENTS`; sign in once with each Staff account so its profile is registered in the local SQLite database.
+
+Sign in at `http://localhost:5173` with each evaluation account to view the Employee, Staff, and Admin workspaces. HR Staff should not see IT requests in the department queue.
+
+### Allowed and denied checks (local)
+
+Use `nadoh@gmail.com` as Employee 1 and `angelicaf@gmail.com` as Employee 2. Start the backend and frontend as described above.
+
+To get an ID token, send this Firebase Authentication request once for each Employee. Get the Firebase web API key from `frontend/src/auth.tsx`, and substitute that Employee's password from the submission email:
+
+```bash
+curl -s -X POST "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=<FIREBASE_WEB_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"nadoh@gmail.com","password":"<EMPLOYEE_1_PASSWORD>","returnSecureToken":true}'
+```
+
+Copy each response's `idToken` into the matching shell variable:
+
+```bash
+export EMPLOYEE_ID_TOKEN='<Employee 1 idToken>'
+export OTHER_EMPLOYEE_ID_TOKEN='<Employee 2 idToken>'
+export API_URL=http://localhost:3001
+```
+
+Keep these tokens private and use fresh tokens for each check.
+
+**Allowed: Employee 1 creates a request (`201`)**
+
+```bash
+curl -i -X POST "$API_URL/requests" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
+  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers","expectedResolutionDate":"2027-12-31T17:30:00.000Z"}'
+```
+
+Copy the returned request `id` for the denied checks and set it here:
+
+```bash
+export REQUEST_ID='<created request id>'
+```
+
+**Denied: Employee 2 reads Employee 1's request (`403`)**
+
+```bash
+curl -i "$API_URL/requests/$REQUEST_ID" \
+  -H "Authorization: Bearer $OTHER_EMPLOYEE_ID_TOKEN"
+```
+
+**Denied: HR Staff tries to assign the IT request (`403`)**
+
+Repeat the sign-in request with `hr@gmail.com` and its password from the submission email. Set `HR_STAFF_ID_TOKEN` to the response's `idToken` and `HR_STAFF_FIREBASE_UID` to its `localId` value (the Firebase UID).
+
+```bash
+export HR_STAFF_ID_TOKEN='<HR Staff idToken>'
+export HR_STAFF_FIREBASE_UID='<HR Staff localId>'
+```
+
+```bash
+curl -i -X PATCH "$API_URL/requests/$REQUEST_ID/assign" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $HR_STAFF_ID_TOKEN" \
+  -d "{\"ownerId\":\"$HR_STAFF_FIREBASE_UID\"}"
+```
+
+The request was created for IT, so HR Staff must receive `403 Forbidden`.
+
+**Bad login: the login screen shows a readable error**
+
+On the sign-in screen, enter `nadoh@gmail.com` with a deliberately wrong password, such as `wrong-password-123`. The screen should display **“Invalid email or password”** instead of a raw Firebase error.
 
 ---
 
@@ -135,11 +229,11 @@ Authenticated API requests use:
 
 ```text
 Authorization: Bearer <FIREBASE_ID_TOKEN>
-
-Roles and Staff department IDs come from backend `FIREBASE_ROLE_ASSIGNMENTS` configuration. `x-user-id`, `x-user-role`, and `x-user-department-id` headers are ignored.
 ```
 
-### Triage a request with AI (Week 4)
+Roles and Staff department IDs come from backend `FIREBASE_ROLE_ASSIGNMENTS` configuration. `x-user-id`, `x-user-role`, and `x-user-department-id` headers are ignored.
+
+### AI-assisted triage
 
 For the live AI path, configure a local backend `.env` before starting the API:
 
@@ -149,7 +243,9 @@ AI_API_KEY=your-local-requesty-key
 AI_MODEL=google/gemma-4-31b-it
 ```
 
-`AI_MODEL` is an example model name only; it is not the app's required default. The backend will fall back to a deterministic local suggestion if the AI config is missing or unusable.
+`AI_MODEL` is an example model name only; it is not the app's required default. If the AI configuration is missing, the backend uses its deterministic local keyword fallback. If a configured provider fails, the backend returns a controlled error.
+
+The local fallback routes matching keywords to IT, HR, or Finance. Examples include device/software/network terms for IT, hiring/leave/benefits terms for HR, and payroll/expense/invoice terms for Finance. Short descriptions (under 20 characters after trimming) are marked `thin` and are not routed automatically.
 
 The provider call is built as:
 
@@ -212,7 +308,7 @@ Authorization: Bearer <FIREBASE_ID_TOKEN>
 {
   "departmentId": "DEPT-IT",
   "description": "Laptop screen flickers",
-  "expectedResolutionDate": "2026-10-15T17:30:00.000Z"
+  "expectedResolutionDate": "2027-12-31T17:30:00.000Z"
 }
 ```
 
@@ -226,7 +322,7 @@ Success (`201`):
   "description": "Laptop screen flickers",
   "status": "Open",
   "ownerId": null,
-  "expectedResolutionDate": "2026-10-15T17:30:00.000Z",
+  "expectedResolutionDate": "2027-12-31T17:30:00.000Z",
   "createdAt": "...",
   "updatedAt": "..."
 }
@@ -265,6 +361,7 @@ This Staff-only endpoint returns active overdue requests for the authenticated S
 
 ```http
 GET /requests/:id
+Authorization: Bearer <FIREBASE_ID_TOKEN>
 ```
 
 | Result | Meaning |
@@ -316,23 +413,31 @@ To correct a request routed to the wrong department, Admins can use `PATCH /requ
 
 ## Boundary checks (curl)
 
-Backend must be running. Git Bash / macOS / Linux syntax:
+Backend must be running. These examples use Git Bash / macOS / Linux syntax. Set the base URL once; change this line when running against a deployed API:
+
+```bash
+export API_URL=http://localhost:3001
+```
 
 **Create (allowed)**
 
 ```bash
-curl -X POST http://localhost:3001/requests \
+curl -X POST "$API_URL/requests" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
-  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers","expectedResolutionDate":"2026-10-15T17:30:00.000Z"}'
+  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers","expectedResolutionDate":"2027-12-31T17:30:00.000Z"}'
 ```
 
-Expected: `201`, `status=Open`, the requested date persisted, and `requesterId` equal to the authenticated Firebase UID.
+Expected: `201`, `status=Open`, the requested date persisted, and `requesterId` equal to the authenticated Firebase UID. Set `REQUEST_ID` to the returned `id`:
+
+```bash
+export REQUEST_ID='<created request id>'
+```
 
 **Invalid payload (rejected on purpose)**
 
 ```bash
-curl -X POST http://localhost:3001/requests \
+curl -X POST "$API_URL/requests" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
   -d '{"departmentId":"DEPT-IT"}'
@@ -343,7 +448,7 @@ Expected: `400 Bad Request`.
 **Missing resource (handled on purpose)**
 
 ```bash
-curl http://localhost:3001/requests/not-a-real-request \
+curl "$API_URL/requests/not-a-real-request" \
   -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN"
 ```
 
@@ -351,28 +456,35 @@ Expected: `404 Not Found`.
 
 **Authorization denied**
 
-Create a request as `EMP-001`, then:
+Use Employee 1's request ID from the allowed create example, then:
 
 ```bash
-curl http://localhost:3001/requests/<REQUEST_ID> \
+curl "$API_URL/requests/$REQUEST_ID" \
   -H "Authorization: Bearer $OTHER_EMPLOYEE_ID_TOKEN"
 ```
 
 Expected: `403 Forbidden`.
 
-**Lifecycle (Week 2, still valid)**
+**Request lifecycle**
+
+Get a Firebase ID token for `it@gmail.com` using the sign-in request in **Grader access**. Set `IT_STAFF_ID_TOKEN` to its `idToken` and `IT_STAFF_FIREBASE_UID` to its `localId`.
 
 ```bash
-curl -X PATCH http://localhost:3001/requests/<REQ_ID>/assign \
+export IT_STAFF_ID_TOKEN='<IT Staff idToken>'
+export IT_STAFF_FIREBASE_UID='<IT Staff localId>'
+```
+
+```bash
+curl -X PATCH "$API_URL/requests/$REQUEST_ID/assign" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $IT_STAFF_ID_TOKEN" \
-  -d '{"ownerId":"STAFF-IT-01"}'
+  -d "{\"ownerId\":\"$IT_STAFF_FIREBASE_UID\"}"
 ```
 
 Expected: `200`, status `In Progress`.
 
 ```bash
-curl -X PATCH http://localhost:3001/requests/<REQ_ID>/status \
+curl -X PATCH "$API_URL/requests/$REQUEST_ID/status" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $IT_STAFF_ID_TOKEN" \
   -d '{"targetStatus":"Resolved"}'
@@ -382,8 +494,6 @@ Expected: `200`, status `Resolved`.
 
 Direct `Open → Resolved` on a new request is still `400`.
 
-On Windows PowerShell, send JSON with `Invoke-RestMethod` or use Git Bash for the `curl` examples above.
-
 ---
 
 ### Windows note
@@ -392,6 +502,7 @@ The examples use Git Bash syntax.
 
 If you are using PowerShell, use `Invoke-RestMethod` instead.
 
+---
 
 ## Automated tests
 
@@ -407,12 +518,14 @@ npm run test:all
 |---|---|
 | `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
 | `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including required expected date-time validation and persistence, Employee-owned request lists, requester-only request details, same-department Staff detail and queue access, cross-department denial, Admin cross-department access and workload summaries, status-history timelines, Staff claim/resolve actions, and Admin assignment/department-reassignment rules. |
-| `npm run test:ai-eval` | AI provider contract validation: unexpected keys, unsupported enum values, and fallback behavior for provider failures. |
+| `npm run test:ai-eval` | AI provider contract validation, expanded local keyword routing when provider configuration is missing, and controlled provider-failure handling. |
 | `npm run test:all` | All backend tests |
 
 ### E2E
 
 The FR8 E2E flow covers date-only, time-only, and combined date-and-time submission and verifies the resulting value appears in Employee request history. FR9 tests cover backend overdue/due-soon classification, the Staff queue's due-soon mark, the Admin warning and disabled assignment control, red overdue badges in Employee and Admin views, and exclusion of resolved requests.
+
+Employee E2E coverage verifies that the **My requests** red dot appears after a status change and clears when the employee opens the request history.
 
 ```bash
 cd frontend
@@ -421,7 +534,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, Employee-only history and role-based page visibility, request submission and the Employee-owned request list with refreshed statuses and a chronological status timeline, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin monitoring requests across departments with department filtering, overdue and due-soon indicators, assigning/reassigning Staff, moving an active request to another department, and reviewing workload in the dedicated workload view. HTTP and SQLite integration tests verify that request privacy rules, deadline classification, and Admin-only workload access hold server-side. Admin E2E coverage includes workload filtering, manual list refresh, opening a request with **Manage assignment**, and returning to the filtered list with **Back to requests**. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
+The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity adapter and mocked API responses; it does not create accounts in your Firebase project. It covers employee signup/login/logout, Employee-only history and role-based page visibility, request submission and the Employee-owned request list with refreshed statuses and a chronological status timeline, Staff processing a request from `Open` through `In Progress` to `Resolved`, and Admin monitoring requests across departments with department filtering, overdue and due-soon indicators, assigning/reassigning Staff, moving an active request to another department, and reviewing workload in the dedicated workload view. Mobile E2E checks cover Employee, Staff, and Admin layouts at 375px and 320px viewport widths, including horizontal overflow and key control sizing. HTTP and SQLite integration tests verify that request privacy rules, deadline classification, and Admin-only workload access hold server-side. Admin E2E coverage includes workload filtering, manual list refresh, opening a request with **Manage assignment**, and returning to the filtered list with **Back to requests**. It also verifies queue animation and ordering behavior. To try real Firebase accounts, start the backend and frontend normally after configuring Firebase as described above.
 
 ---
 
@@ -432,9 +545,9 @@ The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity
 | `docs/product-spec.md` | Product problem, actors, requirements |
 | `docs/architecture.md` | System structure and trust boundaries |
 | `docs/data-model.md` | Durable facts and lifecycle rules |
-| `docs/week2-agentic-workflow.md` | Week 2 lifecycle verification |
-| `docs/week3-full-stack-delivery.md` | Week 3 Build → Protect → Automate evidence |
-| `docs/week4-production-ai.md` | Week 4 verified AI triage contract and Requesty integration |
+| `docs/week2-agentic-workflow.md` | Request lifecycle design and verification notes |
+| `docs/week3-full-stack-delivery.md` | Full-stack delivery history and implementation notes |
+| `docs/week4-production-ai.md` | AI triage contract and provider integration notes |
 | `docs/decisions/ADR-001-relational-database.md` | Database choice |
 
 ---

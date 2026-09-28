@@ -1,6 +1,18 @@
 import React, { FormEvent, useState } from 'react';
 import { useAuth } from './auth';
 
+function loginErrorMessage(error: unknown): string {
+  const code = error && typeof error === 'object' && 'code' in error
+    ? String((error as { code: unknown }).code)
+    : '';
+
+  if (['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-email'].includes(code)) {
+    return 'Invalid email or password';
+  }
+  if (code.startsWith('auth/')) return 'Unable to sign in. Please try again.';
+  return error instanceof Error ? error.message : 'Authentication failed. Please try again.';
+}
+
 export function AuthScreen() {
   const { signIn, signUp, logout, error: authError } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -22,7 +34,7 @@ export function AuthScreen() {
       if (mode === 'signup') await signUp(name.trim(), email.trim(), password);
       else await signIn(email.trim(), password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed. Please try again.');
+      setError(mode === 'login' ? loginErrorMessage(err) : err instanceof Error ? err.message : 'Authentication failed. Please try again.');
     } finally {
       setBusy(false);
     }

@@ -20,7 +20,7 @@ This model is derived from the product requirements and architecture rather than
 6. **Keep the AI triage suggestion as a separate, non-persistent recommendation layer.** The suggestion may inform the employee before final submission, but the durable request record is created only after the employee submits the actual request.
 7. **Model departments as data, not a hardcoded enum.** IT, HR, and Finance exist at launch, but the product spec leaves future departments as an open question.
 
-Traceability: SPEC1, SPEC2, SPEC4, SPEC6, SPEC9, FR1–FR14, NFR2.
+Traceability: SPEC1, SPEC2, SPEC4, SPEC6, SPEC9, FR1–FR13, NFR2.
 
 ---
 
@@ -35,7 +35,7 @@ Represents an internal company employee who interacts with the Service Hub.
 - `display_name` — name shown in the UI.
 - `role` — Employee/Requester, Department Staff, or Admin/Manager.
 - `department_id` — department associated with the user when applicable.
-- Identity/authentication information is supplied by the external company Identity Provider; the Service Hub consumes the identity and relevant claims rather than implementing authentication itself.
+- Firebase Authentication verifies credentials and supplies signed ID tokens. The backend verifies each token, keys local users by Firebase UID, and assigns Employee by default; Staff/Admin roles and Staff departments come from the server-side UID mapping. Passwords remain in Firebase and are not stored in SQLite. Employee self-sign-up does not verify company employment.
 
 **Why it exists**
 - Requests need a requester.
@@ -83,7 +83,7 @@ The central business entity. It represents an employee's request for help from a
 **Why it exists**
 This entity supports submission, ownership, status, expected resolution, overdue monitoring, employee history, department queues, reassignment, and admin monitoring.
 
-**Traceability:** FR1–FR14, SPEC2, SPEC4, SPEC8, NFR2.
+**Traceability:** FR1–FR13, SPEC2, SPEC4, SPEC8, NFR2.
 
 ---
 
@@ -102,7 +102,9 @@ Represents an immutable record of a request's status changes over time.
 **Why it exists**
 The product explicitly requires employees to view their complete request history. The architecture also separates current request state from historical information. Current `status` alone cannot reconstruct a reliable audit/history trail.
 
-**Traceability:** FR5, FR10, FR11, NFR2, acceptance criteria in §9.
+The Employee UI compares refreshed request statuses with a browser-local snapshot to show the unread red dot on **My requests**. The snapshot and unread request IDs are client-side UI state, not additional database entities.
+
+**Traceability:** FR5, FR10, NFR2, acceptance criteria in §9.
 
 ### 2.5 Triage Suggestion (ephemeral, not persisted)
 
@@ -190,11 +192,10 @@ The model must preserve the current status on `Request` and each change in `Requ
 3. Staff can update the request status.
 4. When a request becomes **Resolved**, it moves out of the active queue and remains available in the employee's resolved history.
 5. A status transition is recorded in status history.
-6. A status change must be persisted before notification is treated as successful; notification is a side effect, not the source of truth.
-7. A triage suggestion is a separate ephemeral recommendation and is not treated as a durable request lifecycle event.
-8. When an Admin moves an active request to another department, its Staff owner is cleared and its status returns to **Open** in the destination department's queue. Resolved requests cannot be moved.
+6. A triage suggestion is a separate ephemeral recommendation and is not treated as a durable request lifecycle event.
+7. When an Admin moves an active request to another department, its Staff owner is cleared and its status returns to **Open** in the destination department's queue. Resolved requests cannot be moved.
 
-Traceability: FR5, FR10–FR11, acceptance criteria §9; architecture §4.1; AI triage contract.
+Traceability: FR5, FR10, acceptance criteria §9; AI triage contract.
 
 ### 5.3 Overdue rule
 
@@ -223,7 +224,7 @@ Authorization is enforced by the Backend API, not by the frontend.
 
 The data model therefore must retain requester, department, owner, and user role/department information needed for these checks.
 
-Traceability: FR13, FR4–FR7, FR12, FR14, edge case §10; architecture §3.1.
+Traceability: FR12, FR4–FR7, FR13, edge case §10; architecture §3.1.
 
 ---
 
@@ -271,7 +272,7 @@ A document-oriented model is not necessary to satisfy the known requirements and
 
 This is a storage **reasoning decision**, not a physical schema prescription. Table names, SQL types, foreign-key syntax, and exact indexes remain implementation work outside the current v0.1 scope.
 
-Traceability: SPEC1–SPEC2, FR10–FR11, FR12; architecture §4.2 and §5.
+Traceability: SPEC1–SPEC2, FR10–FR11; architecture §4.2 and §5.
 
 ---
 
@@ -286,7 +287,7 @@ Find requests where requester_id = current_user
 Optionally filter/order by current status or creation/update time.
 ```
 
-Supports: FR3, FR11, FR13.
+Supports: FR3, FR10, FR12.
 
 ### AP2 — Department staff views queue
 
@@ -297,7 +298,7 @@ The active queue excludes overdue requests; a separate overdue view includes onl
 whose expected resolution deadline is within the previous seven days.
 ```
 
-Supports: FR4, FR13.
+Supports: FR4, FR12.
 
 ### AP3 — Staff updates a request
 
@@ -306,7 +307,7 @@ Load request by request_id
 then verify department authorization before changing status/ownership.
 ```
 
-Supports: FR5–FR6, FR13.
+Supports: FR5–FR6, FR12.
 
 ### AP4 — Admin views all requests
 
@@ -314,7 +315,7 @@ Supports: FR5–FR6, FR13.
 Find/aggregate requests across departments.
 ```
 
-Supports: FR12.
+Supports: FR11.
 
 ### AP5 — Admin finds overdue requests
 
@@ -335,7 +336,7 @@ Supports: FR9.
 Find status-history records for one request, ordered chronologically.
 ```
 
-Supports: FR11.
+Supports: FR10.
 
 ### AP7 — Admin monitors staff workload
 
@@ -343,13 +344,13 @@ Supports: FR11.
 Aggregate Open and In Progress requests by department and owner_id. Exclude Resolved requests; include registered Staff members with zero assigned active requests.
 ```
 
-Supports: edge case §10, FR14.
+Supports: edge case §10, FR13.
 
 ### Index reasoning
 
 At the physical implementation stage, indexes should be justified by these access patterns. The architecture identifies `department`, `requester_id`, `status`, and `expected_resolution_date` as likely useful indexed fields for the expected workload, but this document does not prescribe the final physical index design.
 
-Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
+Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR13.
 
 ---
 
@@ -359,8 +360,7 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 
 | Status | Requirement(s) | Rationale |
 |---|---|---|
-| Implemented | FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR11, FR12, FR13, FR14 | FR1 and FR2 are proven across their frontend/backend flows. FR3 lets an Employee view all their own requests and current statuses; Firebase-UID filtering, resolved requests, status refresh, and the full Employee UI are covered by HTTP, SQLite integration, and Playwright tests. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to a Staff profile in the request's own department. FR7 lets Admins move an active request to a different supported department; the backend clears its owner, returns it to `Open`, validates authorization and department values, and rejects resolved requests. FR8 lets the Employee provide a date, a time, or both for the expected resolution; the client applies the documented default when one part is omitted, the backend validates and persists the UTC timestamp, and Employee, Staff, and Admin views display it in local time. HTTP, SQLite integration, and Playwright tests cover validation, persistence, and submission. FR9 derives `overdue` for active requests past their deadline and `due-soon` for active requests due within three hours; Employees see their own overdue requests in red, Staff see an inline Due soon mark in their department queue, and the Admin list marks overdue requests in red, disables Manage assignment for overdue requests, and displays a three-hour alert. Resolved requests are excluded. HTTP, SQLite integration, and Playwright tests cover deadline classification and role-specific indicators. FR11 records each status transition and displays the chronological timeline in the Employee's own request history; initial submission, assignment, resolution, and private history filtering are covered by HTTP, SQLite integration, and Playwright tests. FR12 gives Admins a cross-department request list with status, owner, and timing details, plus manual and automatic refresh. FR13 enforces Employee ownership and Staff department boundaries server-side, with Admin cross-department access; request-list, queue, detail, and protected-action boundaries are covered by HTTP and SQLite integration tests, while Playwright verifies authenticated Employee history and role-specific views. FR14 gives Admins department totals and each registered Staff member's active, Open, and In Progress assignment counts; resolved requests are excluded, zero-workload Staff remain visible, and the department selector filters the dedicated workload view. HTTP, SQLite integration, and Playwright tests cover the workload endpoint, calculations, authorization, and dashboard. |
-| Not implemented | FR10 | This requirement is not yet implemented and verified end-to-end. |
+| Implemented | FR1–FR13 | FR1–FR2 cover request submission and validated AI triage. FR3 covers an Employee viewing their own current status; status-change history and its red-dot indicator are captured by FR10. FR4 covers the Staff queue filtered by assigned department. FR5 covers Staff taking ownership (`Open` → `In Progress`) and resolving (`In Progress` → `Resolved`). FR6 covers Staff self-ownership and Admin assignment/reassignment to Staff in the request's department. FR7 lets Admins move an active request to a different supported department; the backend clears its owner, returns it to `Open`, validates authorization and department values, and rejects resolved requests. FR8 lets an Employee provide a date, time, or both for expected resolution; the client applies the documented default, the backend validates and persists the UTC timestamp, and all roles display it in local time. FR9 derives overdue and due-soon states for active requests and drives the role-specific indicators; resolved requests are excluded. FR10 records each status transition and displays the Employee's chronological request history. FR11 gives Admins cross-department monitoring; FR12 enforces Employee ownership and Staff department boundaries server-side; FR13 provides Admin workload summaries. HTTP, SQLite integration, and Playwright coverage for these flows is described in the README test section. |
 
 ### 9.2 Requirement-to-model mapping
 
@@ -375,11 +375,10 @@ Traceability: architecture §3.2; FR3, FR4, FR9, FR11–FR12, FR14.
 | FR7 Department reassignment | Request.department_id can be changed by authorized admin |
 | FR8 Expected date and time | Request.expected_resolution_date (UTC timestamp) |
 | FR9 Overdue detection | Derived from expected timestamp + current status |
-| FR10 Notifications | Status History/current status provides committed change for notification |
-| FR11 Full history | Request Status History |
-| FR12 Admin cross-department monitoring | Department relationship + request collection supports cross-department reads |
-| FR13 Privacy/isolation | Requester, department, owner + role/department context support server-side filters |
-| FR14 Admin workload monitoring | Request.owner_id + department_id support aggregation by staff/department |
+| FR10 Full history and status-change indicator | Request Status History; browser-local status snapshot and unread state per Firebase UID |
+| FR11 Admin cross-department monitoring | Department relationship + request collection supports cross-department reads |
+| FR12 Privacy/isolation | Requester, department, owner + role/department context support server-side filters |
+| FR13 Admin workload monitoring | Request.owner_id + department_id support aggregation by staff/department |
 | NFR1 Browser access | Not a data-model concern; handled by architecture/client |
 | NFR2 Few-second status reflection | Current status is directly persisted/read; synchronous DB path |
 | NFR3 Simple UI | No unnecessary model complexity |
