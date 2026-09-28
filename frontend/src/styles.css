@@ -754,7 +754,11 @@ button {
 }
 
 .employee-view-switch button {
+  display: inline-flex;
   flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 42px;
   border: 0;
   border-radius: 10px;
@@ -762,6 +766,15 @@ button {
   color: var(--muted);
   font-weight: 700;
   transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.request-status-notification-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #c62828;
+  box-shadow: 0 0 0 2px white;
 }
 
 .employee-view-switch button.is-selected {
@@ -1871,6 +1884,314 @@ textarea:focus {
 
   .employee-view-enter {
     animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .app-shell {
+    width: 100%;
+    padding: 14px 12px calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .app-shell:not(.auth-shell) {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .app-shell.auth-shell,
+  .auth-shell.department-queue-shell,
+  .admin-workspace-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .panel,
+  .panel.auth-panel {
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    padding: 20px 16px;
+    border-radius: 18px;
+    backdrop-filter: blur(6px);
+  }
+
+  .auth-panel .auth-brand {
+    margin: 0 0 8px;
+    transform: none;
+  }
+
+  .auth-form {
+    gap: 14px;
+    margin-top: 20px;
+  }
+
+  .form-panel,
+  .department-queue-panel {
+    min-height: 0;
+  }
+
+  .employee-workspace-heading {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .employee-workspace-heading h1 {
+    max-width: 15ch;
+    font-size: clamp(1.35rem, 6vw, 1.75rem);
+    line-height: 1.12;
+  }
+
+  .employee-workspace-heading > .btn {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .employee-view-switch {
+    position: sticky;
+    top: max(8px, env(safe-area-inset-top));
+    z-index: 10;
+    margin: 18px 0;
+    background: rgba(245, 248, 255, 0.96);
+    backdrop-filter: blur(10px);
+  }
+
+  .employee-view-switch button {
+    min-height: 46px;
+    padding: 8px 6px;
+    font-size: 0.92rem;
+  }
+
+  .request-form {
+    gap: 16px;
+  }
+
+  .request-form input,
+  .request-form select,
+  .request-form textarea,
+  .admin-assignment-panel input,
+  .admin-assignment-panel select,
+  .admin-monitor-toolbar select,
+  .admin-workload-toolbar select {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .request-form textarea {
+    min-height: 150px;
+    padding: 14px;
+  }
+
+  .expected-date-control {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .expected-date-tooltip {
+    position: static;
+    display: block;
+    grid-column: 1 / -1;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--muted);
+    font-size: 0.78rem;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .actions .btn,
+  .auth-submit {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .queue-heading,
+  .queue-toolbar {
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .queue-heading h1 {
+    font-size: 1.3rem;
+    line-height: 1.2;
+  }
+
+  .admin-monitor-actions,
+  .department-queue-panel .admin-monitor-actions {
+    width: 100%;
+    align-self: stretch;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .admin-monitor-actions > .btn,
+  .department-queue-panel .admin-monitor-actions > .btn {
+    flex: 1 1 140px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .admin-monitor-toolbar,
+  .admin-workload-toolbar {
+    width: 100%;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .admin-monitor-toolbar .field-group,
+  .admin-workload-toolbar .field-group {
+    width: 100%;
+  }
+
+  .admin-monitor-count {
+    margin: 0;
+  }
+
+  .admin-monitor-panel,
+  .admin-workload-panel {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .admin-workload-content {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .admin-department-workload-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-assignment-panel {
+    overflow: visible;
+    padding-right: 16px;
+  }
+
+  .admin-assignment-lookup,
+  .admin-assignment-form,
+  .admin-department-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-assignment-lookup-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-assignment-form > .btn,
+  .admin-department-form > .btn {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .admin-request-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-workload-table-wrap {
+    max-width: calc(100vw - 56px);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .request-history-heading {
+    gap: 10px;
+  }
+
+  .refresh-requests-button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .request-history-card {
+    padding: 14px;
+  }
+
+  .request-history-card-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .request-history-badges {
+    flex-wrap: wrap;
+  }
+
+  .status-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .queue-request-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .queue-action-button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .submission-dialog-backdrop {
+    align-items: end;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .submission-dialog {
+    max-height: calc(100dvh - 24px);
+    padding: 22px 18px;
+    border-radius: 20px;
+  }
+
+  .submission-dialog-actions {
+    flex-direction: column;
+  }
+
+  .submission-dialog-actions .btn {
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-shell {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .panel,
+  .panel.auth-panel {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  .employee-workspace-heading {
+    gap: 8px;
+  }
+
+  .employee-workspace-heading > .btn {
+    padding-inline: 9px;
+    font-size: 0.84rem;
+  }
+
+  .admin-department-workload-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
