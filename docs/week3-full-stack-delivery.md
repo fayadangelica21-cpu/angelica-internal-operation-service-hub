@@ -4,6 +4,8 @@
 
 > **Authentication update:** the Week 3 sections below describe the original development identity adapter and header-based examples. The current project has replaced that adapter with Firebase Authentication; see the README and architecture document for the current token, role-mapping, and SQLite profile flow.
 
+> **Historical examples:** the `x-user-*` header requests and `EMP-*` identities in this delivery record document the earlier Week 3 implementation only. They are not valid against the current Firebase-authenticated API. Use the current Firebase bearer-token examples in the README and Postman collection.
+
 This Week 3 delivery turns the existing Week 2 lifecycle slice into one narrow **user-facing, integrated, persistent, permission-aware, validated, failure-aware, automatically verified** flow.
 
 **Flow:** an Employee submits an internal service request for IT, HR, or Finance and immediately receives the newly created request in the `Open` state.
@@ -329,11 +331,8 @@ This is meaningful because it follows the user action across the frontend and AP
 
 **No external integration is added for Week 3.**
 
-The architecture describes an external company Identity Provider and a Notification Service. However, the assignment explicitly says an external integration is not automatically required.
-
 The product design says the Service Hub **consumes** identity rather than implementing authentication. For this local integrated slice, a development identity adapter represents the already-known role/department context so that authorization can be tested without inventing a new SSO dependency.
 
-Notification is also not part of this narrow flow. The architecture remains the source for the future integration direction.
 
 Therefore this delivery intentionally does **not** add:
 
@@ -345,7 +344,6 @@ Therefore this delivery intentionally does **not** add:
 - production infrastructure
 - monitoring
 - real SSO implementation
-- notification gateway implementation
 
 These omissions are deliberate scope control, not missing requirements for this Week 3 slice.
 
