@@ -202,6 +202,148 @@ test('Employee workspace shows only the authenticated employee history and no pr
   await expect(page.getByRole('region', { name: 'All requests across departments' })).toHaveCount(0);
 });
 
+test('employee workspace stays usable at mobile widths', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByLabel('Email').fill('employee@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await expect(page.getByRole('tab', { name: 'New request' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Submit request' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  const dateInput = page.getByLabel('Expected resolution date');
+  const timeInput = page.getByLabel('Expected resolution time');
+  await expect.poll(async () => {
+    const dateBox = await dateInput.boundingBox();
+    const timeBox = await timeInput.boundingBox();
+    return Boolean(dateBox && timeBox && timeBox.y >= dateBox.y + dateBox.height - 1);
+  }).toBe(true);
+
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('tab', { name: 'My requests' }).click();
+  await expect(page.getByRole('region', { name: 'Your requests' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const refreshButton = page.getByRole('button', { name: 'Refresh requests' });
+  await expect(refreshButton).toBeVisible();
+  expect((await refreshButton.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+});
+
+test('employee sees and clears the My requests dot after a status change', async ({ page }) => {
+  let currentStatus = 'Open';
+  let employeeRequestReads = 0;
+  const request = {
+    id: 'REQ-STATUS-DOT',
+    requesterId: 'e2e-employee@example.test',
+    departmentId: 'DEPT-IT',
+    description: 'Request used to verify the employee status update indicator.',
+    statusHistory: [
+      { historyId: 'HIST-STATUS-DOT-OPEN', fromStatus: null, toStatus: 'Open', changedAt: new Date().toISOString() },
+    ],
+    ownerId: null,
+    createdAt: new Date().toISOString(),
+  };
+  await page.route('**/requests', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer e2e-token:e2e-employee@example.test');
+    if (route.request().method() !== 'GET') {
+      await route.fulfill({ status: 405, json: { message: 'Method not allowed in this test.' } });
+      return;
+    }
+    employeeRequestReads += 1;
+    const statusHistory = currentStatus === 'Open'
+      ? request.statusHistory
+      : [
+        ...request.statusHistory,
+        { historyId: 'HIST-STATUS-DOT-PROGRESS', fromStatus: 'Open', toStatus: 'In Progress', changedAt: new Date().toISOString() },
+      ];
+    await route.fulfill({ json: [{ ...request, status: currentStatus, statusHistory }] });
+  });
+
+  await page.clock.install();
+  await page.goto('/');
+  await page.getByLabel('Email').fill('employee@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  const myRequestsTab = page.getByRole('tab', { name: 'My requests' });
+  await expect(myRequestsTab.locator('.request-status-notification-dot')).toHaveCount(0);
+  await expect.poll(() => employeeRequestReads).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('service-hub-status-snapshot:e2e-employee@example.test')))
+    .toContain('REQ-STATUS-DOT');
+
+  currentStatus = 'In Progress';
+  await page.clock.fastForward(5001);
+  await expect(myRequestsTab).toHaveAttribute('aria-label', 'My requests, status changed');
+  await expect(myRequestsTab.locator('.request-status-notification-dot')).toBeVisible();
+
+  await myRequestsTab.click();
+  await expect(page.getByRole('region', { name: 'Your requests' })).toContainText('In Progress');
+  await expect(myRequestsTab.locator('.request-status-notification-dot')).toHaveCount(0);
+  await expect(myRequestsTab).toHaveAttribute('aria-label', 'My requests');
+});
+
+test('Staff queue controls fit on a mobile screen', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByLabel('Email').fill('it.staff@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await expect(page.getByRole('region', { name: 'Department request queue' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Take ownership' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Weekly overdue' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const actionButton = page.getByRole('button', { name: 'Take ownership' });
+  const actionBox = await actionButton.boundingBox();
+  expect(actionBox?.height).toBeGreaterThanOrEqual(44);
+  expect(actionBox?.x).toBeGreaterThanOrEqual(0);
+  expect(actionBox && actionBox.x + actionBox.width).toBeLessThanOrEqual(320);
+});
+
+test('Admin monitoring and workload views fit on a mobile screen', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.route('**/requests/admin', async (route) => route.fulfill({ json: [
+    {
+      id: 'REQ-ADMIN-MOBILE', departmentId: 'DEPT-IT',
+      description: 'Mobile layout request with a longer description to exercise wrapping.',
+      status: 'Open', ownerId: null, ownerDisplayName: null,
+      expectedResolutionDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), deadlineStatus: null,
+    },
+  ] }));
+  await page.route('**/requests/admin/workload', async (route) => route.fulfill({ json: {
+    departments: [
+      { departmentId: 'DEPT-IT', activeRequestCount: 1, openRequestCount: 1, inProgressRequestCount: 0, unassignedRequestCount: 1 },
+      { departmentId: 'DEPT-HR', activeRequestCount: 0, openRequestCount: 0, inProgressRequestCount: 0, unassignedRequestCount: 0 },
+      { departmentId: 'DEPT-FINANCE', activeRequestCount: 0, openRequestCount: 0, inProgressRequestCount: 0, unassignedRequestCount: 0 },
+    ],
+    staff: [],
+  } }));
+  await page.goto('/');
+  await page.getByLabel('Email').fill('admin@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await expect(page.getByRole('heading', { name: 'All requests' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Manage assignment' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'View workload' }).click();
+  await expect(page.getByRole('region', { name: 'Workload overview' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const backButton = page.getByRole('button', { name: 'Back to requests' });
+  const backBox = await backButton.boundingBox();
+  expect(backBox?.height).toBeGreaterThanOrEqual(44);
+  expect(backBox?.x).toBeGreaterThanOrEqual(0);
+  expect(backBox && backBox.x + backBox.width).toBeLessThanOrEqual(320);
+});
+
 test('AI triage automatically selects the suggested department', async ({ page }) => {
   await page.route('**/triage', async (route) => {
     await route.fulfill({
