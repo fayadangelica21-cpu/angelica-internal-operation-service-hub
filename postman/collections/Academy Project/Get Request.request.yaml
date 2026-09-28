@@ -1,13 +1,11 @@
 $kind: http-request
 name: Get Request
 method: GET
-url: 'http://localhost:3000/requests/:id'
+url: 'http://localhost:3001/requests/:id'
 order: 2000
 headers:
-  - key: x-user-id
-    value: EMP-001
-  - key: x-user-role
-    value: Employee
+  - key: Authorization
+    value: 'Bearer {{employeeIdToken}}'
 pathVariables:
   - key: id
     value: ''
