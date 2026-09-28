@@ -56,6 +56,29 @@ function getClassificationTone(classification: TriageSuggestion['classification'
   }
 }
 
+function readStoredStatusSnapshot(key: string): Record<string, string> | null {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return null;
+    const parsed: unknown = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+  } catch {
+    return null;
+  }
+}
+
+function readStoredUnreadStatusIds(key: string): string[] {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function App() {
   return <AuthProvider><RequestApp /></AuthProvider>;
 }
@@ -87,7 +110,11 @@ function RequestApp() {
   const [ownRequestsLoading, setOwnRequestsLoading] = useState(false);
   const [ownRequestsError, setOwnRequestsError] = useState('');
   const [ownRequestsNotice, setOwnRequestsNotice] = useState('');
+  const [unreadStatusRequestIds, setUnreadStatusRequestIds] = useState<string[]>([]);
   const ownRequestsRefreshId = useRef(0);
+  const ownRequestStatusesRef = useRef<Record<string, string> | null>(null);
+  const showHistoryRef = useRef(showHistory);
+  showHistoryRef.current = showHistory;
   const [adminRequests, setAdminRequests] = useState<RequestRecord[]>([]);
   const [adminRequestsLoading, setAdminRequestsLoading] = useState(false);
   const [adminRequestsError, setAdminRequestsError] = useState('');
@@ -115,7 +142,29 @@ function RequestApp() {
     setOwnRequestsNotice('');
     try {
       const nextRequests = await listOwnRequests();
-      if (refreshId === ownRequestsRefreshId.current) setOwnRequests(nextRequests);
+      if (refreshId === ownRequestsRefreshId.current) {
+        setOwnRequests(nextRequests);
+        if (user?.role === 'Employee') {
+          const snapshotKey = `service-hub-status-snapshot:${user.id}`;
+          const unreadKey = `service-hub-unread-status:${user.id}`;
+          const previousStatuses = readStoredStatusSnapshot(snapshotKey) ?? ownRequestStatusesRef.current;
+          const nextStatuses = Object.fromEntries(nextRequests.map((item) => [item.id, item.status]));
+          if (previousStatuses) {
+            const changedIds = nextRequests
+              .filter((item) => previousStatuses[item.id] && previousStatuses[item.id] !== item.status)
+              .map((item) => item.id);
+            if (changedIds.length > 0 && !showHistoryRef.current) {
+              setUnreadStatusRequestIds((current) => {
+                const nextUnread = [...new Set([...current, ...changedIds])];
+                try { localStorage.setItem(unreadKey, JSON.stringify(nextUnread)); } catch { /* Keep the in-session indicator if storage is unavailable. */ }
+                return nextUnread;
+              });
+            }
+          }
+          ownRequestStatusesRef.current = nextStatuses;
+          try { localStorage.setItem(snapshotKey, JSON.stringify(nextStatuses)); } catch { /* Status-change detection still works for this session's loaded list. */ }
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to load your requests.';
       if (refreshId === ownRequestsRefreshId.current) {
@@ -252,6 +301,10 @@ function RequestApp() {
     setRequest(null);
     setShowHistory(true);
     setShowAssistant(false);
+    setUnreadStatusRequestIds([]);
+    if (user?.role === 'Employee') {
+      try { localStorage.removeItem(`service-hub-unread-status:${user.id}`); } catch { /* The history view still opens if storage is unavailable. */ }
+    }
     void refreshOwnRequests(true);
   }
 
@@ -376,6 +429,8 @@ function RequestApp() {
   useEffect(() => {
     if (user?.role !== 'Employee') return;
     setOwnRequests([]);
+    ownRequestStatusesRef.current = readStoredStatusSnapshot(`service-hub-status-snapshot:${user.id}`);
+    setUnreadStatusRequestIds(readStoredUnreadStatusIds(`service-hub-unread-status:${user.id}`));
     void refreshOwnRequests();
     const refreshInterval = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refreshOwnRequests(true);
@@ -889,7 +944,11 @@ function RequestApp() {
             <button type="button" role="tab" aria-selected={!showHistory} className={!showHistory ? 'is-selected' : ''}
               onClick={() => { setShowHistory(false); setShowAssistant(false); }}>New request</button>
             <button type="button" role="tab" aria-selected={showHistory} className={showHistory ? 'is-selected' : ''}
-              onClick={() => { setShowHistory(true); setShowAssistant(false); void refreshOwnRequests(true); }}>My requests</button>
+              aria-label={unreadStatusRequestIds.length > 0 ? 'My requests, status changed' : 'My requests'}
+              onClick={openOwnRequests}>
+              My requests
+              {unreadStatusRequestIds.length > 0 && <span className="request-status-notification-dot" aria-hidden="true" />}
+            </button>
           </div>
 
           {!showHistory && <div className="employee-view-content employee-view-enter">
