@@ -39,6 +39,23 @@ describe('TriageProviderService — AI eval cases', () => {
     expect(result.confidence).toBeGreaterThanOrEqual(0.8);
   });
 
+  it.each([
+    ['The desktop computer has a broken monitor and needs repair', 'DEPT-IT', 'hardware'],
+    ['The Teams application crashes during software updates', 'DEPT-IT', 'software'],
+    ['I cannot access the shared drive after a Wi-Fi outage', 'DEPT-IT', 'access'],
+    ['I need help with onboarding paperwork for a new hire', 'DEPT-HR', 'hr_policy'],
+    ['My maternity leave benefits are missing from the employee handbook', 'DEPT-HR', 'hr_policy'],
+    ['My direct deposit payroll deduction is wrong this month', 'DEPT-FINANCE', 'payroll'],
+    ['Please approve the vendor invoice for this purchase order', 'DEPT-FINANCE', 'finance'],
+  ])('routes expanded keyword input to the expected department and issue type', async (description, departmentId, issueType) => {
+    const result = await service.getSuggestion({ ...basePayload, description });
+
+    expect(result.departmentId).toBe(departmentId);
+    expect(result.issueType).toBe(issueType);
+    expect(result.classification).toBe('clear');
+    expect(result.requiresMoreInfo).toBe(false);
+  });
+
   it('thin input is flagged as needing more info', async () => {
     const result = await service.getSuggestion({
       ...basePayload,
