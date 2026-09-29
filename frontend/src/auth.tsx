@@ -25,7 +25,7 @@ type AuthContextValue = {
 };
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyAd2zzO7qI6D-Um8gA6aoYPHFVulFDP_0Q',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyBUR_442nDlllE-KTPTBxzJAzbNpd__hik',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'internaloperationservice-f9727.firebaseapp.com',
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'internaloperationservice-f9727',
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'internaloperationservice-f9727.firebasestorage.app',

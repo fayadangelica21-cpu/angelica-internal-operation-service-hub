@@ -25,11 +25,12 @@ Open -> In Progress -> Resolved
 
 ## Live app
 
-- **Frontend:** `<FRONTEND_URL>`
-- **API health:** `<API_URL>/health/live` and `<API_URL>/health/ready`
-- **Submitted release SHA:** `<FINAL_SHA>`; it must match the `release` value from readiness.
+- **Frontend:** https://hub-web-74n0.onrender.com
+- **API health:** https://hub-api-ep8z.onrender.com/health/live and https://hub-api-ep8z.onrender.com/health/ready
+- **Currently deployed SHA:** `e3e94dca76462f23b14f04ddfcacf1b5c9de7b58` (confirmed by the readiness response).
+- **Final submission SHA:** pending the final evidence update and redeployment.
 
-Fill in the deployed URLs and frozen SHA before submission. The grader must be able to open the public frontend and complete the main journey without a local server or API client.
+The URLs above identify the initial live deployment. Before submission, deploy the final evidence update and replace the current SHA with the SHA returned by the running API. The grader must be able to open the public frontend and complete the main journey without a local server or API client.
 
 ### Demo access and critical journey
 
@@ -78,8 +79,8 @@ This runs clean installs, lint and type checks, backend tests, builds, Playwrigh
 
 | Task | Instructions |
 |---|---|
-| Check process liveness | Open `<API_URL>/health/live`; it does not query the database. |
-| Check readiness | Open `<API_URL>/health/ready`; `200 ok`, `200 degraded` for AI, and `503 down` for database failure. The body identifies release SHA. |
+| Check process liveness | Open `https://hub-api-ep8z.onrender.com/health/live`; it does not query the database. |
+| Check readiness | Open `https://hub-api-ep8z.onrender.com/health/ready`; `200 ok`, `200 degraded` for AI, and `503 down` for database failure. The body identifies release SHA. |
 | Inspect logs | Render API service logs; structured JSON events and redaction rules are in [Week 5 operations](docs/week5-release-operations.md). |
 | Monitor | Repository monitor plus external liveness monitor; thresholds and setup are in [Week 5 operations](docs/week5-release-operations.md). |
 | Recover | Follow the database, AI, sleeping service, and fresh database runbooks in [Week 5 operations](docs/week5-release-operations.md); then rerun the UI journey and live smoke. |
