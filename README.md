@@ -458,7 +458,7 @@ The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity
 | `docs/week3-full-stack-delivery.md` | Full-stack delivery history and implementation notes |
 | `docs/week4-production-ai.md` | AI triage contract and provider integration notes |
 | `docs/decisions/ADR-001.md` | Relational model, hosted Postgres, and deployment decision |
-| `docs/week5-release-operations.md` | Health, logs, monitoring, release gate, recovery, and GO/NO-GO evidence |
+| `docs/week5-release-operations.md` | Health, logs, monitoring, release gate, recovery, and release readiness evidence |
 
 ---
 
