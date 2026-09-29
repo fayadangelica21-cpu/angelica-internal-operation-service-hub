@@ -10,12 +10,14 @@ import {
 } from 'firebase/auth';
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { API_URL } from './config';
+import { fetchWithWakeRetry } from './api-fetch';
 
 export type AppUser = { id: string; role: 'Employee' | 'Staff' | 'Admin'; departmentId?: string };
 type AuthIdentity = { uid: string; email: string | null; displayName?: string | null; getIdToken: () => Promise<string> };
 type AuthContextValue = {
   user: AppUser | null;
   loading: boolean;
+  serverWaking: boolean;
   error: string;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
@@ -57,7 +59,7 @@ async function getAuthToken(): Promise<string> {
 
 async function loadAppUser(identity: AuthIdentity): Promise<AppUser> {
   const token = await identity.getIdToken();
-  const response = await fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+  const response = await fetchWithWakeRetry(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = body && typeof body === 'object' && 'message' in body ? String(body.message) : 'Unable to load your account.';
@@ -69,7 +71,14 @@ async function loadAppUser(identity: AuthIdentity): Promise<AppUser> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [serverWaking, setServerWaking] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const handleWaking = (event: Event) => setServerWaking((event as CustomEvent<boolean>).detail);
+    window.addEventListener('service-hub-server-waking', handleWaking);
+    return () => window.removeEventListener('service-hub-server-waking', handleWaking);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -124,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
+    serverWaking,
     error,
     async signIn(email, password) {
       setError('');
@@ -152,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       await signOut(firebaseAuth);
     },
-  }), [user, loading, error]);
+  }), [user, loading, serverWaking, error]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
