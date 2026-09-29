@@ -1,0 +1,25 @@
+{
+  "name": "operations-hub",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "verify:release": "npm run verify:install && npm run verify:static && npm run verify:test && npm run verify:build && npm run verify:e2e && npm run verify:ai-evals && npm run verify:scripts && npm run verify:secrets",
+    "verify:secrets": "node scripts/scan-secrets.mjs",
+    "verify:install": "npm ci && npm --prefix backend ci && npm --prefix frontend ci",
+    "lint": "npm exec -- eslint backend/src backend/test frontend/src",
+    "verify:static": "npm run lint && npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
+    "verify:test": "npm --prefix backend run test:all",
+    "verify:build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "verify:e2e": "npm --prefix frontend exec -- playwright install chromium && npm --prefix frontend run test:e2e",
+    "verify:ai-evals": "npm --prefix backend run test:ai-eval",
+    "verify:smoke": "node scripts/smoke.mjs",
+    "monitor": "node scripts/monitor.mjs",
+    "verify:scripts": "node --test scripts/monitor.test.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^10.11.0",
+    "typescript-eslint": "^8.71.0"
+  }
+}
