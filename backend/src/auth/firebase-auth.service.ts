@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
-import { applicationDefault, getApp, getApps, initializeApp } from 'firebase-admin/app';
+import { applicationDefault, cert, getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { CurrentUserData, UserRole } from '../requests/current-user';
 
@@ -10,8 +10,10 @@ export class FirebaseAuthService {
   private readonly firebaseApp = getApps().length
     ? getApp()
     : initializeApp({
-        credential: applicationDefault(),
-        projectId: process.env.FIREBASE_PROJECT_ID || 'internaloperationservice-f9727',
+        credential: process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+          ? cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON))
+          : applicationDefault(),
+        projectId: process.env.FIREBASE_PROJECT_ID,
       });
 
   async authenticateToken(idToken: string): Promise<CurrentUserData> {

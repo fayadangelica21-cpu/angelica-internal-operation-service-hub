@@ -4,7 +4,7 @@
 
 > **Authentication update:** the Week 3 sections below describe the original development identity adapter and header-based examples. The current project has replaced that adapter with Firebase Authentication; see the README and architecture document for the current token, role-mapping, and SQLite profile flow.
 
-> **Historical examples:** the `x-user-*` header requests and `EMP-*` identities in this delivery record document the earlier Week 3 implementation only. They are not valid against the current Firebase-authenticated API. Use the current Firebase bearer-token examples in the README and Postman collection.
+> **Historical examples:** the `x-user-*` header requests and `EMP-*` identities in this delivery record document the earlier Week 3 implementation only. They are not valid against the current Firebase-authenticated API. For current acceptance and handoff, use the deployed frontend journey in the README. Historical API examples are supplemental and do not replace the live UI proof.
 
 This Week 3 delivery turns the existing Week 2 lifecycle slice into one narrow **user-facing, integrated, persistent, permission-aware, validated, failure-aware, automatically verified** flow.
 

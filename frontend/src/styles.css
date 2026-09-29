@@ -166,6 +166,21 @@ button {
   padding: 32px 20px;
 }
 
+.server-waking-notice {
+  position: fixed;
+  z-index: 20;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #94a3b8;
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #1e293b;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 14%);
+}
+
 .app-shell:not(.auth-shell) {
   min-height: 100vh;
   display: grid;
@@ -2146,7 +2161,7 @@ textarea:focus {
 
   .queue-action-button {
     width: 100%;
-    min-height: 44px;
+    min-height: 44.5px;
   }
 
   .submission-dialog-backdrop {

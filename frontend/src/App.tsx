@@ -83,8 +83,15 @@ export function App() {
   return <AuthProvider><RequestApp /></AuthProvider>;
 }
 
+function ServerWakingNotice() {
+  const { serverWaking } = useAuth();
+  return serverWaking
+    ? <p className="server-waking-notice" role="status">Waking up the server. This can take up to a minute…</p>
+    : null;
+}
+
 function RequestApp() {
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading, serverWaking, logout } = useAuth();
   const [departmentId, setDepartmentId] = useState<string>('DEPT-IT');
   const [description, setDescription] = useState('');
   const [expectedResolutionDate, setExpectedResolutionDate] = useState('');
@@ -460,13 +467,14 @@ function RequestApp() {
     [adminDepartmentFilter, adminWorkload.staff],
   );
   if (authLoading) {
-    return <main className="app-shell"><section className="panel auth-panel" aria-live="polite">Checking your sign-in…</section></main>;
+    return <main className="app-shell"><section className="panel auth-panel" aria-live="polite">{serverWaking ? 'Waking up the server. This can take up to a minute…' : 'Checking your sign-in…'}</section></main>;
   }
   if (!user) return <AuthScreen />;
   if (user.role !== 'Employee') {
     if (user.role === 'Staff') {
       return (
         <main className="app-shell auth-shell department-queue-shell">
+          <ServerWakingNotice />
           <section className="panel department-queue-panel" aria-label="Department request queue">
             <div className="queue-heading">
               <div>
@@ -583,6 +591,7 @@ function RequestApp() {
     if (user.role === 'Admin') {
       return (
         <main className="app-shell auth-shell admin-workspace-shell">
+          <ServerWakingNotice />
           {adminScreen === 'monitor' ? (
           <section className="panel admin-monitor-panel" aria-label="All requests across departments">
             <div className="queue-heading">
@@ -862,6 +871,7 @@ function RequestApp() {
     }
     return (
       <main className="app-shell auth-shell">
+          <ServerWakingNotice />
         <section className="panel auth-panel" aria-label="Role access">
           <p className="eyebrow">Signed in</p>
           <h1>{user.role} workspace</h1>
@@ -930,6 +940,7 @@ function RequestApp() {
 
   return (
     <main className="app-shell">
+      <ServerWakingNotice />
       <div className={`layout ${showAssistant ? 'layout-two-panel' : showHistory ? 'layout-history-panel' : 'layout-one-panel'}`}>
         <section className="panel form-panel">
           <div className="queue-heading employee-workspace-heading">

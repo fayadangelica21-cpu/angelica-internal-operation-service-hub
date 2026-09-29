@@ -1,6 +1,6 @@
 # Data Model: Internal Operations Service Hub
 
-> **Firebase implementation note:** Firebase UID is the local SQLite user key. The backend persists email, display name, server-assigned role, and staff department in `users`; Firebase alone stores authentication credentials. The conceptual model below remains the product-level target.
+> **Firebase implementation note:** Firebase UID is the user key (SQLite locally, Postgres in production). The backend persists email, display name, server-assigned role, and staff department in `users`; Firebase alone stores authentication credentials. The conceptual model below remains the product-level target.
 
 > **Inputs:** `product-spec.md` + `architecture.md`.
 >

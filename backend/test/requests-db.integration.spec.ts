@@ -343,7 +343,7 @@ describe('RequestsService database integration', () => {
     for (const item of assignedItRequests) {
       await service.assign({ id: 'ADMIN-WORKLOAD', role: 'Admin' }, item.id, { ownerId: 'STAFF-WORKLOAD-IT' });
     }
-    const unassignedHrRequest = await service.create(
+    await service.create(
       { id: 'EMP-WORKLOAD-HR-OPEN', role: 'Employee' },
       { departmentId: 'DEPT-HR', description: 'Unassigned HR workload' },
     );

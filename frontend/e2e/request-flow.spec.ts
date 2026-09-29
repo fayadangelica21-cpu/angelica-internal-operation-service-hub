@@ -153,6 +153,27 @@ test('employee can submit a request and see the persisted lifecycle starting sta
   await expect(page.getByRole('region', { name: 'Your requests' })).toHaveCount(0);
 });
 
+test('shows a waking message and retries safe reads after a cold start response', async ({ page }) => {
+  await page.unroute('**/auth/me');
+  let attempts = 0;
+  await page.route('**/auth/me', async (route) => {
+    attempts++;
+    if (attempts === 1) {
+      await route.fulfill({ status: 503, json: { message: 'Starting' } });
+      return;
+    }
+    await route.fulfill({ json: { id: 'e2e-employee@example.test', role: 'Employee' } });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Email').fill('employee@example.test');
+  await page.getByLabel('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByText(/Waking up the server/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  expect(attempts).toBeGreaterThanOrEqual(2);
+});
+
 test('employee may provide only a date or only a time for the expected resolution', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-09-27T08:00:00') });
   await page.goto('/');

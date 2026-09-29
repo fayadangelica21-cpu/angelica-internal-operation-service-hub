@@ -1,25 +1,98 @@
 # Internal Operations Service Hub
 
 ```text
-Week 1 — Product specification, architecture, data model
-Week 2 — Verified Open → In Progress → Resolved lifecycle
-Week 3 — React + NestJS + SQLite product slice
-Week 4 — Backend-controlled AI triage suggestion contract
+Week 1 - Product specification, architecture, data model
+Week 2 - Verified Open -> In Progress -> Resolved lifecycle
+Week 3 - React + NestJS + database product slice
+Week 4 - Backend-controlled AI triage suggestion contract
+Week 5 - Hosted release, operational evidence, and recovery
 ```
 
 ```text
 Current version
-React + NestJS + SQLite service request hub
+React + NestJS service request hub (Postgres in production, SQLite locally and in tests)
 Firebase Authentication, role-based access, and AI-assisted triage
 ```
 
 Employees submit and track internal service requests for IT, HR, or Finance. The backend owns validation, authorization, persistence, and lifecycle rules. AI-assisted triage suggests a likely department and next step before the employee submits a request.
 
 ```text
-Open → In Progress → Resolved
+Open -> In Progress -> Resolved
 ```
 
 ---
+
+
+## Live app
+
+- **Frontend:** `<FRONTEND_URL>`
+- **API health:** `<API_URL>/health/live` and `<API_URL>/health/ready`
+- **Submitted release SHA:** `<FINAL_SHA>`; it must match the `release` value from readiness.
+
+Fill in the deployed URLs and frozen SHA before submission. The grader must be able to open the public frontend and complete the main journey without a local server or API client.
+
+### Demo access and critical journey
+
+| Account | Role | Department | Demo password |
+|---|---|---|---|
+| `nadoh@gmail.com` | Employee | - | `p@ssw0rd` |
+| `angelicaf@gmail.com` | Employee | - | `p@ssw0rd` |
+| `it@gmail.com` | Staff | IT | `Provided privately by email` |
+| `hr@gmail.com` | Staff | HR | `Provided privately by email` |
+| `finance@gmail.com` | Staff | Finance | `Provided privately by email` |
+| `admin@gmail.com` | Admin | All | `Provided privately by email` |
+
+The shared Employee password is intended only for these public demo accounts; never reuse it for a personal or privileged account. Staff and Admin credentials are provided privately to the instructor. In a private window: sign in as Employee, create a request through the UI, sign in as IT Staff and claim/process it, then return as Employee and confirm the new state and history persist after reload. Also show one rejected unauthorized or invalid action. If AI is unavailable, choose a department manually and submit.
+
+### Boundary checks (UI and automated proof)
+
+The live UI journey above proves the employee and staff workflow. The release smoke and automated backend tests prove authorization and invalid requests the UI does not expose as actions.
+
+| Actor and action | Expected result | Where it is proven |
+|---|---|---|
+| Employee creates own request | 201 Created | Live UI journey; verify:smoke |
+| Employee reads own request | 200 OK | Live UI journey; verify:smoke |
+| Staff claims request and makes a valid transition | 200 OK | Live UI journey; verify:smoke |
+| Admin views requests across departments and assigns within a department | 200 OK | Backend integration tests |
+| Request without a valid Firebase token | 401 Unauthorized | verify:smoke |
+| Employee tries a Staff-only status action | 403 Forbidden | verify:smoke; backend integration tests |
+| Another Employee reads the request | 403 Forbidden | Backend integration tests |
+| Staff from another department accesses the request | 403 Forbidden | Backend integration tests |
+| Employee submits invalid request data | 400 Bad Request | verify:smoke; backend integration tests |
+| Staff jumps directly from Open to Resolved | 400 Bad Request; state stays unchanged | verify:smoke; lifecycle tests |
+| Employee rereads the request after valid processing | 200 OK with updated, persisted state | Live UI journey; verify:smoke |
+
+Run the automated checks with the commands in [Automated tests](#automated-tests). The live smoke is documented in [Week 5 operations](docs/week5-release-operations.md). These supplement the live frontend journey and do not replace it.
+
+## Engineer quick start
+
+From a fresh clone, with Node.js 24, npm, and Git installed:
+
+    git clone https://github.com/fayadangelica21-cpu/angelica-internal-operation-service-hub.git
+    cd angelica-internal-operation-service-hub
+    npm run verify:release
+
+This runs clean installs, lint and type checks, backend tests, builds, Playwright E2E, AI evaluations, monitor-state tests, and the repository secret scan. It installs Playwright Chromium during the E2E step. For local interactive development, follow [Install and run](#install-and-run); local configuration examples are `backend/.env.example` and `frontend/.env.example`. Never put production secrets in the repository.
+
+## Operations
+
+| Task | Instructions |
+|---|---|
+| Check process liveness | Open `<API_URL>/health/live`; it does not query the database. |
+| Check readiness | Open `<API_URL>/health/ready`; `200 ok`, `200 degraded` for AI, and `503 down` for database failure. The body identifies release SHA. |
+| Inspect logs | Render API service logs; structured JSON events and redaction rules are in [Week 5 operations](docs/week5-release-operations.md). |
+| Monitor | Repository monitor plus external liveness monitor; thresholds and setup are in [Week 5 operations](docs/week5-release-operations.md). |
+| Recover | Follow the database, AI, sleeping service, and fresh database runbooks in [Week 5 operations](docs/week5-release-operations.md); then rerun the UI journey and live smoke. |
+
+## Evidence map
+
+| Week | Evidence |
+|---|---|
+| 1 - Design | [Product specification](docs/product-spec.md), [architecture](docs/architecture.md), [data model](docs/data-model.md), [ADR-001](docs/decisions/ADR-001.md) |
+| 2 - Engineering ownership | [Workflow evidence](docs/week2-agentic-workflow.md) and backend state-machine tests |
+| 3 - Full stack | [Delivery evidence](docs/week3-full-stack-delivery.md), backend integration tests, and frontend E2E tests |
+| 4 - Production AI | [AI evidence](docs/week4-production-ai.md), triage tests, and evaluations |
+| 5 - Release ownership | [Operations runbook](docs/week5-release-operations.md), [Render Blueprint](render.yaml), scripts, and GitHub Actions workflow |
 
 ## Current capabilities
 
@@ -27,7 +100,7 @@ Open → In Progress → Resolved
 - Responsive mobile layouts for Employee, Staff, and Admin workspaces, with touch-friendly controls and vertically stacked form inputs
 - AI assistant UI for department suggestions, confidence scoring, and suggested next steps
 - NestJS API with an explicit contract
-- SQLite persistence through TypeORM
+- TypeORM persistence (hosted Postgres in production, SQLite locally and in tests)
 - Firebase-authenticated Staff can view active requests in their assigned department; the backend derives the department from the verified identity
 - Staff can open a separate overdue view for overdue requests with deadlines in the previous seven days; older overdue requests are omitted from both Staff queue views
 - Admins can assign or reassign a request to a Staff account in that request's department
@@ -43,18 +116,20 @@ Open → In Progress → Resolved
 - Invalid input rejected on purpose (`400`)
 - Missing request handled on purpose (`404`)
 - Automated business-rule, integration, and E2E tests
-- Regression protection for the forbidden `Open → Resolved` jump
+- Regression protection for the forbidden `Open -> Resolved` jump
 
-Out of scope: company SSO, CI/CD, and production infrastructure. Firebase Authentication provides email/password sign-in for this project. The backend verifies Firebase ID tokens and makes every authorization decision.
+Out of scope: company SSO.
+
+The current release includes hosted deployment, release checks, health endpoints, structured logs, monitoring, and recovery procedures. Firebase Authentication provides email/password sign-in. The backend verifies Firebase ID tokens and makes every authorization decision.
 
 ---
 
 ## Prerequisites
 
-- Node.js 20.19+ or 22.12+ (Vite 8 requirement)
+- Node.js 24 (used by the Render deployment and GitHub Actions)
 - npm
 
-No separate database server is required.
+No separate database server is required for local development (SQLite). Production uses hosted Postgres.
 
 ---
 
@@ -64,16 +139,16 @@ No separate database server is required.
 
 ```bash
 cd backend
-npm install
+npm ci
 cp .env.example .env
 npm run start:dev
 ```
 
 Create a local `.env` file for backend runtime settings. The app loads it at startup through `dotenv.config()`, so the AI provider and database settings are available before the NestJS app begins serving requests. Keep local secrets and service-account credentials out of source control.
 
-Set `FIREBASE_PROJECT_ID` to the Firebase project ID. Configure Google Application Default Credentials for this Firebase project on the backend machine; keep any service-account file outside the repository and never commit it. `FIREBASE_ROLE_ASSIGNMENTS` maps trusted Firebase UIDs to `Employee`, `Staff`, or `Admin` (with `departmentId` for Staff). Use the UID shown for each account in Firebase; do not map privileged roles by email because email addresses can be claimed during public signup. Unmapped signed-in accounts are Employees. The browser cannot set roles or staff departments.
+Set `FIREBASE_PROJECT_ID` to your Firebase project ID. For local backend authentication, use either Application Default Credentials or set `FIREBASE_SERVICE_ACCOUNT_JSON` to the service-account JSON in your ignored local `backend/.env`; if using a file, keep it outside the repository and point `GOOGLE_APPLICATION_CREDENTIALS` to it. The hosted backend requires `FIREBASE_SERVICE_ACCOUNT_JSON`, set only in the Render dashboard. Never commit or share service-account credentials. `FIREBASE_ROLE_ASSIGNMENTS` maps trusted Firebase UIDs to `Employee`, `Staff`, or `Admin` (with `departmentId` for Staff). Use each account's Firebase UID; do not assign privileged roles by email. Unmapped signed-in accounts are Employees. The browser cannot set roles or staff departments.
 
-After Firebase verifies a user's ID token, `GET /auth/me` creates or updates that account's profile in the local SQLite `users` table, keyed by Firebase UID. The profile stores email, display name, role, and department where applicable; passwords remain in Firebase and are never stored in SQLite. Public signup is for demo Employee accounts and does not verify company employment.
+After Firebase verifies a user's ID token, `GET /auth/me` creates or updates that account's profile in the database, keyed by Firebase UID. The profile stores email, display name, role, and department where applicable; passwords remain in Firebase. Public signup is for demo Employee accounts and does not verify company employment.
 
 If `AI_BASE_URL` and `AI_API_KEY` are not set, the backend still starts successfully and uses a deterministic local keyword fallback. It recognizes common IT device, software, sign-in, and network issues; HR topics such as onboarding, leave, and benefits; and Finance topics such as payroll, expenses, invoices, and purchasing. If both settings are present, the app uses the live AI provider.
 
@@ -93,25 +168,30 @@ The backend appends `/chat/completions` automatically, so `AI_BASE_URL` must be 
 
 API: `http://localhost:3001`
 
-SQLite file (created on first start): `backend/data/service-hub.sqlite`
+SQLite file: `backend/data/service-hub.sqlite`. In local development, SQLite is selected when `DATABASE_URL` is empty, and the schema is created automatically on startup. Employees get a profile the first time they sign in. To pre-create the mapped Staff and Admin profile rows, set `FIREBASE_ROLE_ASSIGNMENTS` in `backend/.env`, then build and seed from the repository root:
+
+```bash
+npm --prefix backend run build
+npm --prefix backend run db:seed
+```
+
+The seed command reads `DATABASE_PATH` (or the default SQLite path) and `FIREBASE_ROLE_ASSIGNMENTS` from `backend/.env`. It creates missing mapped profiles and leaves existing profiles unchanged. Staff/Admin profile details are completed when those accounts first sign in. For a new hosted Postgres database, follow the schema and seed sequence in [Week 5 operations](docs/week5-release-operations.md); keep `DATABASE_URL` and Firebase service credentials in Render, not in a committed file.
 
 ### 2. Frontend
 
-In a second terminal:
+In a second terminal, copy frontend/.env.example to frontend/.env, then run:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
 UI: `http://localhost:5173`
 
-The Firebase web-app settings have defaults in `frontend/src/auth.tsx`, so no frontend environment file is required for this project configuration. The Vite development server proxies API calls to `http://localhost:3001`. Enable Email/Password in Firebase Authentication before testing signup and login.
+Copy `frontend/.env.example` to `frontend/.env` for local configuration. The Firebase web-app settings have public client defaults in `frontend/src/auth.tsx`; the API URL uses the Vite development proxy at `http://localhost:3001`. Enable Email/Password in Firebase Authentication before testing signup and login.
 
-Employees can create accounts from the app. Create Staff/Admin accounts in Firebase, copy each account's UID, then add its UID, role, and (for Staff) department to backend `FIREBASE_ROLE_ASSIGNMENTS`. Staff accounts are added to the local SQLite user table when they sign in; Admins can assign requests to those registered Staff accounts in the same department.
-
-For the Postman examples, set the `employeeIdToken` global to a current Firebase ID token for an Employee account. Obtain a fresh token after signing in; do not save evaluation passwords or long-lived tokens in the collection.
+Employees can create accounts from the app. Create Staff/Admin accounts in Firebase, copy each account's UID, then add its UID, role, and (for Staff) department to backend `FIREBASE_ROLE_ASSIGNMENTS`. Staff accounts are added to the configured database when they sign in; Admins can assign requests to those registered Staff accounts in the same department.
 
 ### Stop the project
 
@@ -119,94 +199,9 @@ The backend and frontend run in separate terminals.
 
 Press Ctrl + C in each terminal to stop the corresponding process.
 
-The SQLite database remains on disk at:
+In local SQLite mode, the database remains on disk at:
 
 backend/data/service-hub.sqlite
-
----
-
-## Grader access
-
-Deployment is planned; the live URL will be added after deployment. The backend verifies Firebase ID tokens and enforces roles and department access on every request; the browser cannot assign its own role or department.
-
-| Email | Evaluation password | Role | Department |
-|---|---|---|---|
-| admin@gmail.com | See submission email | Admin | — |
-| it@gmail.com | See submission email | Staff | `DEPT-IT` |
-| hr@gmail.com | See submission email | Staff | `DEPT-HR` |
-| finance@gmail.com | See submission email | Staff | `DEPT-FINANCE` |
-| nadoh@gmail.com | `p@ssw0rd` | Employee | — |
-| angelicaf@gmail.com | `p@ssw0rd` | Employee | — |
-
-Employees can also sign up from the app. Staff and Admin roles are assigned by Firebase UID in backend `FIREBASE_ROLE_ASSIGNMENTS`; sign in once with each Staff account so its profile is registered in the local SQLite database.
-
-Sign in at `http://localhost:5173` with each evaluation account to view the Employee, Staff, and Admin workspaces. HR Staff should not see IT requests in the department queue.
-
-### Allowed and denied checks (local)
-
-Use `nadoh@gmail.com` as Employee 1 and `angelicaf@gmail.com` as Employee 2. Start the backend and frontend as described above.
-
-To get an ID token, send this Firebase Authentication request once for each Employee. Get the Firebase web API key from `frontend/src/auth.tsx`, and substitute that Employee's password from the submission email:
-
-```bash
-curl -s -X POST "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=<FIREBASE_WEB_API_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"nadoh@gmail.com","password":"<EMPLOYEE_1_PASSWORD>","returnSecureToken":true}'
-```
-
-Copy each response's `idToken` into the matching shell variable:
-
-```bash
-export EMPLOYEE_ID_TOKEN='<Employee 1 idToken>'
-export OTHER_EMPLOYEE_ID_TOKEN='<Employee 2 idToken>'
-export API_URL=http://localhost:3001
-```
-
-Keep these tokens private and use fresh tokens for each check.
-
-**Allowed: Employee 1 creates a request (`201`)**
-
-```bash
-curl -i -X POST "$API_URL/requests" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
-  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers","expectedResolutionDate":"2027-12-31T17:30:00.000Z"}'
-```
-
-Copy the returned request `id` for the denied checks and set it here:
-
-```bash
-export REQUEST_ID='<created request id>'
-```
-
-**Denied: Employee 2 reads Employee 1's request (`403`)**
-
-```bash
-curl -i "$API_URL/requests/$REQUEST_ID" \
-  -H "Authorization: Bearer $OTHER_EMPLOYEE_ID_TOKEN"
-```
-
-**Denied: HR Staff tries to assign the IT request (`403`)**
-
-Repeat the sign-in request with `hr@gmail.com` and its password from the submission email. Set `HR_STAFF_ID_TOKEN` to the response's `idToken` and `HR_STAFF_FIREBASE_UID` to its `localId` value (the Firebase UID).
-
-```bash
-export HR_STAFF_ID_TOKEN='<HR Staff idToken>'
-export HR_STAFF_FIREBASE_UID='<HR Staff localId>'
-```
-
-```bash
-curl -i -X PATCH "$API_URL/requests/$REQUEST_ID/assign" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $HR_STAFF_ID_TOKEN" \
-  -d "{\"ownerId\":\"$HR_STAFF_FIREBASE_UID\"}"
-```
-
-The request was created for IT, so HR Staff must receive `403 Forbidden`.
-
-**Bad login: the login screen shows a readable error**
-
-On the sign-in screen, enter `nadoh@gmail.com` with a deliberately wrong password, such as `wrong-password-123`. The screen should display **“Invalid email or password”** instead of a raw Firebase error.
 
 ---
 
@@ -398,7 +393,7 @@ The response groups active `Open` and `In Progress` requests by department and a
 
 ### Assign a request (Admin)
 
-Admins can look up an individual request by ID, then assign or reassign it to a Staff member in that request's department. The staff options come from local SQLite profiles created when Staff sign in. The backend enforces the role and same-department rules, regardless of the submitted owner ID.
+Admins can look up an individual request by ID, then assign or reassign it to a Staff member in that request's department. The staff options come from database profiles created when Staff sign in. The backend enforces the role and same-department rules, regardless of the submitted owner ID.
 
 ```http
 GET /requests/:id/assignees
@@ -411,100 +406,13 @@ To correct a request routed to the wrong department, Admins can use `PATCH /requ
 
 ---
 
-## Boundary checks (curl)
-
-Backend must be running. These examples use Git Bash / macOS / Linux syntax. Set the base URL once; change this line when running against a deployed API:
-
-```bash
-export API_URL=http://localhost:3001
-```
-
-**Create (allowed)**
-
-```bash
-curl -X POST "$API_URL/requests" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
-  -d '{"departmentId":"DEPT-IT","description":"Laptop screen flickers","expectedResolutionDate":"2027-12-31T17:30:00.000Z"}'
-```
-
-Expected: `201`, `status=Open`, the requested date persisted, and `requesterId` equal to the authenticated Firebase UID. Set `REQUEST_ID` to the returned `id`:
-
-```bash
-export REQUEST_ID='<created request id>'
-```
-
-**Invalid payload (rejected on purpose)**
-
-```bash
-curl -X POST "$API_URL/requests" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN" \
-  -d '{"departmentId":"DEPT-IT"}'
-```
-
-Expected: `400 Bad Request`.
-
-**Missing resource (handled on purpose)**
-
-```bash
-curl "$API_URL/requests/not-a-real-request" \
-  -H "Authorization: Bearer $EMPLOYEE_ID_TOKEN"
-```
-
-Expected: `404 Not Found`.
-
-**Authorization denied**
-
-Use Employee 1's request ID from the allowed create example, then:
-
-```bash
-curl "$API_URL/requests/$REQUEST_ID" \
-  -H "Authorization: Bearer $OTHER_EMPLOYEE_ID_TOKEN"
-```
-
-Expected: `403 Forbidden`.
-
-**Request lifecycle**
-
-Get a Firebase ID token for `it@gmail.com` using the sign-in request in **Grader access**. Set `IT_STAFF_ID_TOKEN` to its `idToken` and `IT_STAFF_FIREBASE_UID` to its `localId`.
-
-```bash
-export IT_STAFF_ID_TOKEN='<IT Staff idToken>'
-export IT_STAFF_FIREBASE_UID='<IT Staff localId>'
-```
-
-```bash
-curl -X PATCH "$API_URL/requests/$REQUEST_ID/assign" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $IT_STAFF_ID_TOKEN" \
-  -d "{\"ownerId\":\"$IT_STAFF_FIREBASE_UID\"}"
-```
-
-Expected: `200`, status `In Progress`.
-
-```bash
-curl -X PATCH "$API_URL/requests/$REQUEST_ID/status" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $IT_STAFF_ID_TOKEN" \
-  -d '{"targetStatus":"Resolved"}'
-```
-
-Expected: `200`, status `Resolved`.
-
-Direct `Open → Resolved` on a new request is still `400`.
-
----
-
-### Windows note
-
-The examples use Git Bash syntax.
-
-If you are using PowerShell, use `Invoke-RestMethod` instead.
-
----
-
 ## Automated tests
+
+Run from the repository root:
+
+    npm run verify:release
+
+Last local result: **PASS** ? 93 backend tests, 18 E2E tests, 19 AI evaluations, and 3 monitor tests. CI and live-smoke evidence: [Week 5 operations document](docs/week5-release-operations.md).
 
 ### Backend
 
@@ -516,7 +424,7 @@ npm run test:all
 
 | Command | What it proves |
 |---|---|
-| `npm run test:unit` | Request lifecycle rules, including valid `Open → In Progress → Resolved` transitions and rejection of invalid transitions. |
+| `npm run test:unit` | Request lifecycle rules, including valid `Open -> In Progress -> Resolved` transitions and rejection of invalid transitions. |
 | `npm run test:integration` | SQLite persistence and HTTP authorization/validation boundaries, including required expected date-time validation and persistence, Employee-owned request lists, requester-only request details, same-department Staff detail and queue access, cross-department denial, Admin cross-department access and workload summaries, status-history timelines, Staff claim/resolve actions, and Admin assignment/department-reassignment rules. |
 | `npm run test:ai-eval` | AI provider contract validation, expanded local keyword routing when provider configuration is missing, and controlled provider-failure handling. |
 | `npm run test:all` | All backend tests |
@@ -548,7 +456,8 @@ The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity
 | `docs/week2-agentic-workflow.md` | Request lifecycle design and verification notes |
 | `docs/week3-full-stack-delivery.md` | Full-stack delivery history and implementation notes |
 | `docs/week4-production-ai.md` | AI triage contract and provider integration notes |
-| `docs/decisions/ADR-001-relational-database.md` | Database choice |
+| `docs/decisions/ADR-001.md` | Relational model, hosted Postgres, and deployment decision |
+| `docs/week5-release-operations.md` | Health, logs, monitoring, release gate, recovery, and GO/NO-GO evidence |
 
 ---
 
@@ -556,95 +465,129 @@ The Playwright suite runs Vite in a dedicated E2E mode with a test-only identity
 
 ```text
 project/
-├── .gitignore
-├── README.md
-├── .postman/
-│   └── resources.yaml
-├── postman/
-│   ├── collections/
-│   │   └── Academy Project/
-│   │       ├── .resources/
-│   │       │   └── definition.yaml
-│   │       ├── Create Request.request.yaml
-│   │       └── Get Request.request.yaml
-│   └── globals/
-│       └── workspace.globals.yaml
-├── docs/
-│   ├── architecture.md
-│   ├── data-model.md
-│   ├── product-spec.md
-│   ├── week2-agentic-workflow.md
-│   ├── week3-full-stack-delivery.md
-│   ├── week4-production-ai.md
-│   └── decisions/
-│       └── ADR-001-relational-database.md
-├── backend/
-│   ├── .env.example
-│   ├── .gitignore
-│   ├── jest.config.js
-│   ├── nest-cli.json
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── tsconfig.json
-│   ├── tsconfig.build.json
-│   ├── tsconfig.spec.json
-│   ├── src/
-│   │   ├── app.module.ts
-│   │   ├── main.ts
-│   │   ├── auth/
-│   │   │   ├── auth.controller.ts
-│   │   │   ├── auth.module.ts
-│   │   │   ├── firebase-auth.guard.ts
-│   │   │   ├── firebase-auth.service.ts
-│   │   │   ├── firebase-auth.service.spec.ts
-│   │   │   └── user.entity.ts
-│   │   ├── requests/
-│   │   │   ├── current-user.ts
-│   │   │   ├── request-state-machine.service.ts
-│   │   │   ├── request-state-machine.service.spec.ts
-│   │   │   ├── requests.controller.ts
-│   │   │   ├── requests.module.ts
-│   │   │   ├── requests.service.ts
-│   │   │   ├── dto/
-│   │   │   │   ├── assign-request.dto.ts
-│   │   │   │   ├── create-request.dto.ts
-│   │   │   │   ├── reassign-request-department.dto.ts
-│   │   │   │   └── update-status.dto.ts
-│   │   │   ├── entities/
-│   │   │   │   ├── request-status-history.entity.ts
-│   │   │   │   └── request.entity.ts
-│   │   │   └── enums/
-│   │   │       └── request-status.enum.ts
-│   │   └── triage/
-│   │       ├── triage.controller.ts
-│   │       ├── triage.dto.ts
-│   │       ├── triage.service.ts
-│   │       ├── triage.service.spec.ts
-│   │       ├── triage-provider.service.ts
-│   │       └── triage-provider.service.spec.ts
-│   └── test/
-│       ├── auth-http.spec.ts
-│       ├── requests-db.integration.spec.ts
-│       └── requests-http.spec.ts
-└── frontend/
-    ├── .gitignore
-    ├── index.html
-    ├── package.json
-    ├── package-lock.json
-    ├── playwright.config.ts
-    ├── tsconfig.json
-    ├── vite.config.mts
-    ├── e2e/
-    │   └── request-flow.spec.ts
-    └── src/
-        ├── App.tsx
-        ├── AuthScreen.tsx
-        ├── api.ts
-        ├── auth.tsx
-        ├── config.ts
-        ├── main.tsx
-        ├── styles.css
-        └── vite-env.d.ts
+|-- .gitignore
+|-- .github/
+|   `-- workflows/
+|       `-- verify.yml
+|-- .gitattributes
+|-- .gitleaksignore
+|-- README.md
+|-- eslint.config.mjs
+|-- package.json
+|-- package-lock.json
+|-- render.yaml
+|-- scripts/
+|   |-- monitor.mjs
+|   |-- monitor.test.mjs
+|   |-- scan-secrets.mjs
+|   `-- smoke.mjs
+|-- .postman/
+|   `-- resources.yaml
+|-- postman/
+|   |-- collections/
+|   |   `-- Academy Project/
+|   |       |-- .resources/
+|   |       |   `-- definition.yaml
+|   |       |-- Create Request.request.yaml
+|   |       `-- Get Request.request.yaml
+|   `-- globals/
+|       `-- workspace.globals.yaml
+|-- docs/
+|   |-- architecture.md
+|   |-- data-model.md
+|   |-- product-spec.md
+|   |-- week2-agentic-workflow.md
+|   |-- week3-full-stack-delivery.md
+|   |-- week4-production-ai.md
+|   |-- week5-release-operations.md
+|   `-- decisions/
+|       `-- ADR-001.md
+|-- backend/
+|   |-- .env.example
+|   |-- .gitignore
+|   |-- package.json
+|   |-- package-lock.json
+|   |-- jest.config.js
+|   |-- nest-cli.json
+|   |-- tsconfig.json
+|   |-- tsconfig.build.json
+|   |-- tsconfig.spec.json
+|   |-- src/
+|   |   |-- app.module.ts
+|   |   |-- auth/
+|   |   |   |-- auth.controller.ts
+|   |   |   |-- auth.module.ts
+|   |   |   |-- firebase-auth.guard.ts
+|   |   |   |-- firebase-auth.service.ts
+|   |   |   |-- firebase-auth.service.spec.ts
+|   |   |   `-- user.entity.ts
+|   |   |-- config/
+|   |   |   |-- database.ts
+|   |   |   |-- env.ts
+|   |   |   `-- env.spec.ts
+|   |   |-- health/
+|   |   |   |-- ai-status.ts
+|   |   |   |-- health.controller.ts
+|   |   |   |-- health.module.ts
+|   |   |   |-- health.service.ts
+|   |   |   `-- health.spec.ts
+|   |   |-- main.ts
+|   |   |-- logging/
+|   |   |   |-- app-logger.ts
+|   |   |   |-- log.ts
+|   |   |   |-- log.spec.ts
+|   |   |   `-- request-logger.ts
+|   |   |-- requests/
+|   |   |   |-- current-user.ts
+|   |   |   |-- dto/
+|   |   |   |   |-- assign-request.dto.ts
+|   |   |   |   |-- create-request.dto.ts
+|   |   |   |   |-- reassign-request-department.dto.ts
+|   |   |   |   `-- update-status.dto.ts
+|   |   |   |-- entities/
+|   |   |   |   |-- request-status-history.entity.ts
+|   |   |   |   `-- request.entity.ts
+|   |   |   |-- enums/
+|   |   |   |   `-- request-status.enum.ts
+|   |   |   |-- requests.controller.ts
+|   |   |   |-- requests.module.ts
+|   |   |   |-- requests.service.ts
+|   |   |   |-- request-state-machine.service.ts
+|   |   |   `-- request-state-machine.service.spec.ts
+|   |   |-- seed.ts
+|   |   `-- triage/
+|   |       |-- triage.controller.ts
+|   |       |-- triage.dto.ts
+|   |       |-- triage.service.ts
+|   |       |-- triage.service.spec.ts
+|   |       |-- triage-provider.service.ts
+|   |       |-- triage-provider.service.spec.ts
+|   |       `-- triage-failure-logging.spec.ts
+|   `-- test/
+|       |-- auth-http.spec.ts
+|       |-- requests-db.integration.spec.ts
+|       `-- requests-http.spec.ts
+`-- frontend/
+    |-- .env.example
+    |-- .gitignore
+    |-- index.html
+    |-- package.json
+    |-- package-lock.json
+    |-- playwright.config.ts
+    |-- tsconfig.json
+    |-- vite.config.mts
+    |-- e2e/
+    |   `-- request-flow.spec.ts
+    `-- src/
+        |-- api.ts
+        |-- api-fetch.ts
+        |-- App.tsx
+        |-- AuthScreen.tsx
+        |-- auth.tsx
+        |-- config.ts
+        |-- main.tsx
+        |-- styles.css
+        `-- vite-env.d.ts
 ```
-This tree lists project source and configuration files; ignored local secrets, databases, dependencies, and generated build artifacts are omitted.
-TypeORM `synchronize` is enabled for this local SQLite slice only.
+
+This tree shows the repository files used by the application, release process, and handoff. Local environment files, databases, dependencies, and generated build output are ignored.

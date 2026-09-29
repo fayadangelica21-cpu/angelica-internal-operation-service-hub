@@ -1,5 +1,6 @@
 import { getAuthToken } from './auth';
 import { API_URL } from './config';
+import { fetchWithWakeRetry } from './api-fetch';
 
 export type RequestRecord = {
   id: string;
@@ -75,13 +76,13 @@ export async function createRequest(departmentId: string, description: string, e
   let response: Response;
   try {
     const token = await getAuthToken();
-    response = await fetch(`${API_URL}/requests`, {
+    response = await fetchWithWakeRetry(`${API_URL}/requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ departmentId, description, expectedResolutionDate }),
     });
   } catch {
-    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+    throw new Error('The service is waking up or temporarily unavailable. Please try again.');
   }
 
   const body = await response.json().catch(() => ({}));
@@ -93,11 +94,11 @@ export async function listOwnRequests(): Promise<RequestRecord[]> {
   let response: Response;
   try {
     const token = await getAuthToken();
-    response = await fetch(`${API_URL}/requests`, {
+    response = await fetchWithWakeRetry(`${API_URL}/requests`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch {
-    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+    throw new Error('The service is waking up or temporarily unavailable. Please try again.');
   }
 
   const body = await response.json().catch(() => ({}));
@@ -124,11 +125,11 @@ export async function getDepartmentQueue(): Promise<RequestRecord[]> {
   let response: Response;
   try {
     const token = await getAuthToken();
-    response = await fetch(`${API_URL}/requests/queue`, {
+    response = await fetchWithWakeRetry(`${API_URL}/requests/queue`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch {
-    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+    throw new Error('The service is waking up or temporarily unavailable. Please try again.');
   }
 
   const body = await response.json().catch(() => ({}));
@@ -147,11 +148,11 @@ async function getAuthenticatedJson<T>(path: string, errorMessage: string): Prom
   let response: Response;
   try {
     const token = await getAuthToken();
-    response = await fetch(`${API_URL}${path}`, {
+    response = await fetchWithWakeRetry(`${API_URL}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch {
-    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+    throw new Error('The service is waking up or temporarily unavailable. Please try again.');
   }
 
   const body = await response.json().catch(() => ({}));
@@ -177,13 +178,13 @@ async function patchRequest(id: string, action: 'assign' | 'status' | 'departmen
   let response: Response;
   try {
     const token = await getAuthToken();
-    response = await fetch(`${API_URL}/requests/${encodeURIComponent(id)}/${action}`, {
+    response = await fetchWithWakeRetry(`${API_URL}/requests/${encodeURIComponent(id)}/${action}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(payload),
     });
   } catch {
-    throw new Error('The API is unreachable. Start the backend on port 3001 and try again.');
+    throw new Error('The service is waking up or temporarily unavailable. Please try again.');
   }
 
   const body = await response.json().catch(() => ({}));
@@ -214,7 +215,7 @@ export async function getTriageSuggestion(
   let response: Response;
   try {
     const token = await getAuthToken();
-    response = await fetch(`${API_URL}/triage`, {
+    response = await fetchWithWakeRetry(`${API_URL}/triage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
