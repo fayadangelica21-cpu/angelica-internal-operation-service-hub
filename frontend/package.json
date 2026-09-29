@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "tsc --noEmit && vite build",
     "test:e2e": "playwright test"
   },
