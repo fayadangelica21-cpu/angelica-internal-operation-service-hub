@@ -27,10 +27,8 @@ Open -> In Progress -> Resolved
 
 - **Frontend:** https://hub-web-74n0.onrender.com
 - **API health:** https://hub-api-ep8z.onrender.com/health/live and https://hub-api-ep8z.onrender.com/health/ready
-- **Currently deployed SHA:** `e3e94dca76462f23b14f04ddfcacf1b5c9de7b58` (confirmed by the readiness response).
-- **Final submission SHA:** pending the final evidence update and redeployment.
 
-The URLs above identify the initial live deployment. Before submission, deploy the final evidence update and replace the current SHA with the SHA returned by the running API. The grader must be able to open the public frontend and complete the main journey without a local server or API client.
+The grader must be able to open the public frontend and complete the main journey without a local server or API client.
 
 ### Demo access and critical journey
 
