@@ -1,12 +1,12 @@
 # Architecture: Internal Operations Service Hub
 
-**Firebase project implementation:** the prototype uses Firebase Authentication email/password for sign-up and sign-in. The frontend sends Firebase ID tokens to the API; the backend verifies them with Firebase Admin. The backend assigns roles and staff departments from the server-side Firebase UID mapping and upserts the verified profile in local SQLite. No password is stored in SQLite. This is the prototype identity implementation; company SSO/directory integration remains out of scope.
+**Firebase project implementation:** the app uses Firebase Authentication email/password for sign-up and sign-in. The frontend sends Firebase ID tokens to the API; the backend verifies them with Firebase Admin. The backend assigns roles and staff departments from the server-side Firebase UID mapping and upserts the verified profile in the configured database (SQLite locally, Postgres in production). No password is stored in the Service Hub database. Company SSO/directory integration remains out of scope.
 
 This document records the product architecture and trust boundaries, with prototype implementation notes where relevant.
 Input: `product-spec.md`. Every decision below traces back to a Functional Requirement (FR),
 Non-Functional Requirement (NFR), or Specification/Constraint (SPEC) ID from that document.
 
-**Current implementation note:** the running prototype uses Firebase email/password authentication and SQLite. Employee request lists refresh every five seconds while the app is visible. When a request's status changes, a red dot appears on **My requests** until the employee opens the history view. The unread indicator and last-seen status snapshot are stored in browser local storage per Firebase UID; they are not server-side or cross-device state. Staff have a separate overdue queue for requests whose deadlines fell within the previous seven days.
+**Current implementation note:** local development and automated tests use SQLite; the hosted release uses Neon Postgres. The frontend uses Firebase email/password authentication. The Render API verifies ID tokens with the Firebase service-account JSON configured in its environment. Employee request lists refresh every five seconds while the app is visible. When a request's status changes, a red dot appears on **My requests** until the employee opens the history view. The unread indicator and last-seen status snapshot are stored in browser local storage per Firebase UID; they are not server-side or cross-device state. Staff have a separate overdue queue for requests whose deadlines fell within the previous seven days.
 
 ---
 
@@ -84,7 +84,7 @@ creation, and any AI action that bypasses backend validation (full exclusion lis
 | Database | Persists requests, users, departments, status history | SPEC1, SPEC2, SPEC4, FR8 |
 
 ### 2.2 External Dependencies
-- **Firebase Authentication** — provides email/password authentication and signed ID tokens. The backend verifies each token, assigns Employee by default, and resolves Staff/Admin roles and Staff departments from server-side `FIREBASE_ROLE_ASSIGNMENTS` keyed by Firebase UID. The Firebase UID is the local SQLite user key; passwords are not stored in the Service Hub database. Employee self-sign-up does not verify company employment, so this prototype does not enforce the product's internal-employee identity assumption (SPEC3).
+- **Firebase Authentication** — provides email/password authentication and signed ID tokens. The backend verifies each token, assigns Employee by default, and resolves Staff/Admin roles and Staff departments from server-side `FIREBASE_ROLE_ASSIGNMENTS` keyed by Firebase UID. The Firebase UID is the user key in SQLite locally and Postgres in production; passwords are not stored in the Service Hub database. Employee self-sign-up does not verify company employment, so this prototype does not enforce the product's internal-employee identity assumption (SPEC3).
 
 No CRM and no separate department databases — the spec keeps this to a single internal system,
 not integrated with existing HR/Finance software (Non-Goal: not replacing dedicated HR/Finance
@@ -168,6 +168,14 @@ role/filter differences rather than separate subsystems.
 
 ---
 
+### 2.8 Deployment and operations (Week 5)
+
+- **Runtime layout:** React static site and NestJS API on Render, hosted Postgres on Neon, Firebase Authentication (unchanged). Defined in `render.yaml`; secrets are entered in the host dashboard only.
+- **Health:** `GET /health/live` (process only) and `GET /health/ready` (database `SELECT 1`, required entity tables, plus triage-model state; `503` when the database/schema is unavailable, `200 degraded` when only the triage model is unavailable). The host health check uses `/health/live` so a database outage does not cause restart loops.
+- **Observability:** one redacted JSON log line per event; `release` (git SHA) on every line and in the health body.
+- **Trust boundary added:** CORS accepts only the origins listed in `CORS_ORIGINS`; health endpoints are public and contain no secrets or personal data.
+- **New failure modes:** database unreachable, backend asleep (free tier), triage provider down. Detection, recovery and evidence: `docs/week5-release-operations.md`. AI stays non-authoritative: a triage failure never blocks manual submission.
+
 ## 3. Trust + Resilience
 
 ### 3.1 Trust / Authorization boundaries
@@ -232,7 +240,7 @@ immediate confirmation that the action succeeded.
 - No code — frontend or backend
 - No database schema (tables/collections/indexes) — only conceptual entities (Requests, Users, Departments) named in Section 2
 - No detailed API endpoint definitions/contracts
-- No CI/CD or production infrastructure
+- No enterprise-scale infrastructure such as Kubernetes, Terraform, microservices, service mesh, or tracing; the release uses Render deployment and a lightweight GitHub Actions release gate.
 - No autonomous request creation from AI without human review
 - No unnecessary microservices — single Backend API + single Database (Section 4 decision)
 - No message queue/event pipeline — Section 4.1 communication is direct sync/async calls only
