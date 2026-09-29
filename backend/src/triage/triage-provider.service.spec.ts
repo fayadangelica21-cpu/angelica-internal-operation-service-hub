@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, ServiceUnavailableException } from '@nestjs/common';
 import { TriageProviderService } from './triage-provider.service';
 import { TriageAiRequest, TriageAiResponseDto } from './triage.dto';
 
