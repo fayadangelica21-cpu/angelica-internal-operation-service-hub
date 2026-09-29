@@ -2,9 +2,11 @@
   "name": "service-hub-backend",
   "version": "0.3.0",
   "private": true,
+  "engines": { "node": ">=22" },
   "description": "Internal Operations Service Hub Week 3 integrated product slice",
   "scripts": {
     "build": "nest build",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "test": "jest",
@@ -12,7 +14,9 @@
     "test:unit": "jest src/requests/request-state-machine.service.spec.ts --runInBand",
     "test:integration": "jest test --runInBand",
     "test:ai-eval": "jest src/triage/triage-provider.service.spec.ts --runInBand",
-    "test:all": "npm test -- --runInBand"
+    "test:all": "npm test -- --runInBand --forceExit",
+    "start:prod": "node dist/main.js",
+    "db:seed": "node dist/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.6",
@@ -23,6 +27,7 @@
     "class-validator": "^0.14.1",
     "dotenv": "^16.6.1",
     "firebase-admin": "^14.5.0",
+    "pg": "^8.13.1",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "sqlite3": "^6.0.1",
