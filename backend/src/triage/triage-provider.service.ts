@@ -1,4 +1,6 @@
 import { BadGatewayException, BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { aiStatus } from '../health/ai-status';
+import { logger } from '../logging/log';
 import { TriageAiRequest, TriageAiResponseDto, ALLOWED_DEPARTMENTS, ALLOWED_ISSUE_TYPES, ALLOWED_CLASSIFICATIONS } from './triage.dto';
 
 export type TriageAiResponse = InstanceType<any>;
@@ -11,18 +13,21 @@ export class TriageProviderService {
     const model = process.env.AI_MODEL || 'openai/gpt-4o-mini';
     const timeoutMs = Number(process.env.AI_TIMEOUT_MS || 15000);
 
+    const startedAt = Date.now();
     const localShortCircuit = this.getLocalShortCircuit(input);
     if (localShortCircuit) {
       return localShortCircuit;
     }
 
     if (!baseUrl || !apiKey) {
+      logger.info('ai.fallback.used', { reason: 'not_configured' });
       return this.getFallbackSuggestion(input);
     }
 
+    let providerTimeout: NodeJS.Timeout | undefined;
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      providerTimeout = setTimeout(() => controller.abort(), timeoutMs);
 
       const response = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST',
@@ -59,8 +64,6 @@ export class TriageProviderService {
         }),
       });
 
-      clearTimeout(timeout);
-
       if (!response.ok) {
         if (response.status >= 500) {
           throw new ServiceUnavailableException('AI triage provider is unavailable.');
@@ -77,6 +80,8 @@ export class TriageProviderService {
       const parsed = typeof content === 'string' ? JSON.parse(content) : content;
       const normalized = this.normalizeResponse(parsed);
 
+      aiStatus.recordSuccess();
+
       if (normalized.classification === 'clear' && normalized.confidence < 0.7) {
         return {
           ...normalized,
@@ -90,6 +95,25 @@ export class TriageProviderService {
 
       return normalized;
     } catch (error) {
+      // Operational evidence: what failed and why. Never logs the description, prompt, response body or key.
+      const reason =
+        error instanceof ServiceUnavailableException
+          ? 'provider_5xx'
+          : error instanceof Error && error.name === 'AbortError'
+            ? 'provider_timeout'
+            : error instanceof BadGatewayException || error instanceof SyntaxError || error instanceof BadRequestException
+              ? 'invalid_response'
+              : 'provider_unreachable';
+      const httpStatus = reason === 'provider_5xx' || reason === 'provider_timeout' ? 503 : 502;
+      aiStatus.recordFailure(reason);
+      logger.error('ai.triage.failed', {
+        reason,
+        httpStatus,
+        durationMs: Date.now() - startedAt,
+        model,
+        message: 'Triage failed: the triage model could not be reached or returned an unusable answer.',
+      });
+
       if (error instanceof ServiceUnavailableException) {
         throw error;
       }
@@ -103,6 +127,8 @@ export class TriageProviderService {
       }
 
       throw new BadGatewayException('AI triage provider returned an invalid response.');
+    } finally {
+      if (providerTimeout) clearTimeout(providerTimeout);
     }
   }
 
