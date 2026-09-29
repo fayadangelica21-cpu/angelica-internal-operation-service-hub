@@ -11,6 +11,7 @@ import { RequestStatusHistoryEntity } from './entities/request-status-history.en
 import { RequestStatus } from './enums/request-status.enum';
 import { RequestStateMachineService } from './request-state-machine.service';
 import { UserEntity } from '../auth/user.entity';
+import { logger } from '../logging/log';
 
 type RequestUpdateCriteria = Parameters<Repository<RequestEntity>['update']>[0];
 type RequestUpdateValues = Parameters<Repository<RequestEntity>['update']>[1];
@@ -444,6 +445,8 @@ export class RequestsService {
       changedByUserId,
       changedAt,
     }));
+    // requestLogger supplies the safe correlation requestId through AsyncLocalStorage.
+    logger.info('lifecycle.transition', { fromStatus, toStatus });
     return this.requestsRepository.findOneByOrFail({ id: requestId });
   }
 
