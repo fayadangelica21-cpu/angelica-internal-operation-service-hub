@@ -1,0 +1,9 @@
+# Early commit that contained backend/.env with an AI provider key.
+# The key was revoked and replaced (see docs/week5-release-operations.md).
+3aa8acb3e4845a67c471cb131ceef1821cafa504:backend/.env:generic-api-key:2
+3aa8acb3e4845a67c471cb131ceef1821cafa504:backend/.env:generic-api-key:4
+
+# Firebase web API keys are public client configuration, not private credentials.
+# Historical fallback and example config; access is enforced by authorized domains and server-side token verification.
+253ada9f4260e4da3b89258bd77ad7408e8a8474:frontend/src/auth.tsx:gcp-api-key:26
+bc67f0e5654f6e4e8ef464250bbec0bcd448e7e0:frontend/.env.example:gcp-api-key:2
